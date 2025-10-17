@@ -1,11 +1,11 @@
 [![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/T3W3QeQp)
 
 
-Team Caffeine — 프로젝트 세팅 가이드
+# Team Caffeine — 프로젝트 세팅 가이드
 
 
 
-프로젝트 구조
+## 프로젝트 구조
 25-team-team-caffeine/
 ├─ front/         # React + Vite 프론트엔드
 ├─ back/          # Node + Express 백엔드
@@ -50,19 +50,12 @@ SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
 SERVICE_ROLE_KEY는 절대 프론트에 넣지 않습니다.
 (서버 전용 키)
 
-4. 개발 서버 실행
-
-루트에서 아래 명령어 한 줄이면
-프론트와 백엔드가 동시에 실행됩니다 
-
-npm run dev
-
 
 개별 실행 (선택사항)
-# 프론트만 실행
+## 프론트만 실행
 npm run dev:front
 
-# 백엔드만 실행
+## 백엔드만 실행
 npm run dev:back
 
 5. Supabase (선택사항)
@@ -74,14 +67,9 @@ cd infra/supabase
 supabase start
 supabase db push
 
-Trouble Shooting
-문제	해결 방법
-vite 실행 안 됨	cd front && npm install 후 재시도
-express 관련 타입 에러	cd back && npm i -D @types/node @types/express
-.env 파일 인식 안 됨	파일명 확인 (.env.local, .env)
-Git 한글 깨짐	git config --global i18n.commitencoding utf-8 설정
 
-Commit 규칙 (예시)
+## Commit 규칙 (예시)
+
 "[김준호]커밋내용~~"
 앞에 이름을 꼭 적어주세요!
 
@@ -94,8 +82,6 @@ Commit 규칙 (예시)
 김준호 (Junho Kim)
 
 Team Caffeine
-
-프로젝트 구조 설계 및 초기 환경 세팅 담당
 
 버전
 
