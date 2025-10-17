@@ -3,8 +3,7 @@
 
 Team Caffeine — 프로젝트 세팅 가이드
 
-이 저장소는 Monorepo 구조(front + back + infra) 로 구성된 프로젝트입니다.
-팀원은 아래 단계를 순서대로 실행하면 바로 개발 환경을 구성할 수 있습니다 
+
 
 프로젝트 구조
 25-team-team-caffeine/
@@ -54,14 +53,10 @@ SERVICE_ROLE_KEY는 절대 프론트에 넣지 않습니다.
 4. 개발 서버 실행
 
 루트에서 아래 명령어 한 줄이면
-프론트와 백엔드가 동시에 실행됩니다 👇
+프론트와 백엔드가 동시에 실행됩니다 
 
 npm run dev
 
-
-프론트엔드: http://localhost:5173
-
-백엔드(API): http://localhost:4000/api/health
 
 개별 실행 (선택사항)
 # 프론트만 실행
