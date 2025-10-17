@@ -3,8 +3,7 @@
 
 # Team Caffeine — 프로젝트 세팅 가이드
 
-이 저장소는 Monorepo 구조(front + back + infra) 로 구성된 프로젝트입니다.
-팀원은 아래 단계를 순서대로 실행하면 바로 개발 환경을 구성할 수 있습니다 
+
 
 ## 프로젝트 구조
 25-team-team-caffeine/
