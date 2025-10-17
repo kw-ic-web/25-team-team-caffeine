@@ -1,0 +1,21 @@
+{
+  "name": "team-caffeine",
+  "private": true,
+  "workspaces": [
+    "front",
+    "back",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:front": "npm --workspace front run dev",
+    "dev:back": "npm --workspace back run dev",
+    "dev": "concurrently \"npm run dev:front\" \"npm run dev:back\"",
+    "build": "npm -w front run build && npm -w back run build",
+    "lint": "npm -w front run lint && npm -w back run lint",
+    "install:all": "npm install --workspaces",
+    "start": "npm -w back run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
