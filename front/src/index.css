@@ -1,0 +1,200 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+    --background: 240 15% 8%;
+    --foreground: 180 100% 90%;
+
+    --card: 240 12% 12%;
+    --card-foreground: 180 100% 90%;
+
+    --popover: 240 15% 10%;
+    --popover-foreground: 180 100% 90%;
+
+    /* Neon Purple Primary */
+    --primary: 270 100% 65%;
+    --primary-foreground: 240 15% 8%;
+
+    /* Neon Cyan Secondary */
+    --secondary: 180 100% 50%;
+    --secondary-foreground: 240 15% 8%;
+
+    /* Dark Muted */
+    --muted: 240 10% 20%;
+    --muted-foreground: 180 50% 60%;
+
+    /* Neon Pink Accent */
+    --accent: 320 100% 60%;
+    --accent-foreground: 240 15% 8%;
+
+    /* Neon Red Destructive */
+    --destructive: 0 100% 60%;
+    --destructive-foreground: 240 15% 8%;
+
+    /* Neon Green Success */
+    --success: 150 100% 50%;
+    --success-foreground: 240 15% 8%;
+
+    /* Neon Yellow Warning */
+    --warning: 45 100% 55%;
+    --warning-foreground: 240 15% 8%;
+
+    --border: 240 20% 25%;
+    --input: 240 15% 15%;
+    --ring: 270 100% 65%;
+
+    --radius: 0.25rem;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(270 100% 65%), hsl(320 100% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(180 100% 50%), hsl(270 100% 65%));
+    --gradient-success: linear-gradient(135deg, hsl(150 100% 50%), hsl(180 100% 50%));
+    
+    /* Shadows with glow */
+    --shadow-neon: 0 0 20px hsl(270 100% 65% / 0.5), 0 0 40px hsl(270 100% 65% / 0.3);
+    --shadow-neon-hover: 0 0 30px hsl(270 100% 65% / 0.7), 0 0 60px hsl(270 100% 65% / 0.5);
+    --shadow-card: 0 8px 32px hsl(240 15% 0% / 0.6);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'DotGothic16', 'Press Start 2P', monospace;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Press Start 2P', monospace;
+    text-shadow: 0 0 10px currentColor;
+  }
+
+  /* Pixel Border Effect */
+  .pixel-border {
+    border: 3px solid;
+    border-image: repeating-linear-gradient(
+      90deg,
+      currentColor 0,
+      currentColor 4px,
+      transparent 4px,
+      transparent 8px
+    ) 3;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Neon Glow Effect */
+  .neon-glow {
+    box-shadow: var(--shadow-neon);
+    transition: var(--transition-smooth);
+  }
+
+  .neon-glow:hover {
+    box-shadow: var(--shadow-neon-hover);
+    transform: translateY(-2px);
+  }
+
+  /* Pixel Art Text */
+  .pixel-text {
+    font-family: 'Press Start 2P', monospace;
+    line-height: 1.8;
+    letter-spacing: 0.05em;
+  }
+
+  /* Korean Text */
+  .korean-text {
+    font-family: 'DotGothic16', monospace;
+    line-height: 1.6;
+  }
+
+  /* Retro Button */
+  .retro-button {
+    position: relative;
+    padding: 12px 24px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    border: 3px solid currentColor;
+    background: var(--gradient-primary);
+    box-shadow: 4px 4px 0 0 hsl(var(--foreground) / 0.2);
+    transition: all 0.1s ease;
+  }
+
+  .retro-button:hover {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 0 hsl(var(--foreground) / 0.2);
+  }
+
+  .retro-button:active {
+    transform: translate(4px, 4px);
+    box-shadow: none;
+  }
+
+  /* Walking Cat Animations */
+  @keyframes bounce-walk {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  @keyframes leg-left {
+    0%, 100% {
+      transform: translateX(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateX(-2px) rotate(-15deg);
+    }
+  }
+
+  @keyframes leg-right {
+    0%, 100% {
+      transform: translateX(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateX(2px) rotate(15deg);
+    }
+  }
+
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-bounce-walk {
+    animation: bounce-walk 0.5s ease-in-out infinite;
+  }
+
+  .animate-leg-left {
+    animation: leg-left 0.3s ease-in-out infinite;
+  }
+
+  .animate-leg-right {
+    animation: leg-right 0.3s ease-in-out infinite;
+    animation-delay: 0.15s;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out;
+  }
+
+  .walking-cat {
+    transition: left 0.05s linear;
+  }
+}
