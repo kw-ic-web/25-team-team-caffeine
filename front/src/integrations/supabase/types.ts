@@ -47,41 +47,228 @@ export type Database = {
         }
         Relationships: []
       }
-      goals: {
+      chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_participants: {
+        Row: {
+          id: string
+          joined_at: string
+          pet_id: string | null
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          pet_id?: string | null
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          pet_id?: string | null
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_participants_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_participants_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_rooms: {
+        Row: {
+          category: string | null
+          challenge_id: string
+          created_at: string
+          deadline: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          challenge_id: string
+          created_at?: string
+          deadline?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          challenge_id?: string
+          created_at?: string
+          deadline?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      daily_tasks: {
         Row: {
           completed: boolean | null
           created_at: string | null
-          difficulty: number | null
-          due_date: string | null
+          failed: boolean | null
+          goal_id: string
           id: string
-          powder_reward: number | null
-          progress: number | null
-          title: string
+          task_date: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
           completed?: boolean | null
           created_at?: string | null
-          difficulty?: number | null
-          due_date?: string | null
+          failed?: boolean | null
+          goal_id: string
           id?: string
-          powder_reward?: number | null
-          progress?: number | null
-          title: string
+          task_date: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
           completed?: boolean | null
           created_at?: string | null
+          failed?: boolean | null
+          goal_id?: string
+          id?: string
+          task_date?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_tasks_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goals: {
+        Row: {
+          completed: boolean | null
+          completed_days: number | null
+          created_at: string | null
+          daily_powder_reward: number | null
+          difficulty: number | null
+          due_date: string | null
+          id: string
+          powder_reward: number | null
+          progress: number | null
+          schedule_days: number[] | null
+          schedule_type: string | null
+          title: string
+          total_days: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          completed_days?: number | null
+          created_at?: string | null
+          daily_powder_reward?: number | null
           difficulty?: number | null
           due_date?: string | null
           id?: string
           powder_reward?: number | null
           progress?: number | null
-          title?: string
+          schedule_days?: number[] | null
+          schedule_type?: string | null
+          title: string
+          total_days?: number | null
           updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          completed_days?: number | null
+          created_at?: string | null
+          daily_powder_reward?: number | null
+          difficulty?: number | null
+          due_date?: string | null
+          id?: string
+          powder_reward?: number | null
+          progress?: number | null
+          schedule_days?: number[] | null
+          schedule_type?: string | null
+          title?: string
+          total_days?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      google_tokens: {
+        Row: {
+          access_token: string
+          created_at: string
+          expires_at: string
+          id: string
+          refresh_token: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          refresh_token?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          refresh_token?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -92,6 +279,7 @@ export type Database = {
           experience: number | null
           id: string
           is_main: boolean | null
+          last_main_change: string | null
           level: number | null
           name: string
           rarity: string | null
@@ -104,6 +292,7 @@ export type Database = {
           experience?: number | null
           id?: string
           is_main?: boolean | null
+          last_main_change?: string | null
           level?: number | null
           name: string
           rarity?: string | null
@@ -116,11 +305,103 @@ export type Database = {
           experience?: number | null
           id?: string
           is_main?: boolean | null
+          last_main_change?: string | null
           level?: number | null
           name?: string
           rarity?: string | null
           stars?: number | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      post_comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          post_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          post_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          post_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_likes: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          image_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
