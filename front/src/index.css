@@ -2,9 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
 
 @layer base {
   :root {
+    /* Retro Gaming Color Palette - Dark Mode First */
     --background: 240 15% 8%;
     --foreground: 180 100% 90%;
 
