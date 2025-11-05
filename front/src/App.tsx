@@ -11,7 +11,9 @@ import Goals from "./pages/Goals";
 import Calendar from "./pages/Calendar";
 import Pets from "./pages/Pets";
 import Community from "./pages/Community";
+import ChatRoom from "./pages/ChatRoom";
 import NotFound from "./pages/NotFound";
+import GoalsArchive from "./pages/GoalsArchive";
 
 const queryClient = new QueryClient();
 
@@ -32,7 +34,8 @@ const App = () => (
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/pets" element={<Pets />} />
               <Route path="/community" element={<Community />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="/chat/:roomId" element={<ChatRoom />} />
+              <Route path="/goals/archive" element={<GoalsArchive />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>

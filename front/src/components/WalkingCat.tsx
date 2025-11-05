@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Heart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -26,14 +27,34 @@ const rarityGradients = {
 };
 
 export const WalkingCat = () => {
+  const location = useLocation();
   const [movingPets, setMovingPets] = useState<MovingPet[]>([]);
   const [isEnabled, setIsEnabled] = useState(() => {
     const saved = localStorage.getItem("walkingPetsEnabled");
     return saved === null ? true : saved === "true";
   });
+  const [isAuthed, setIsAuthed] = useState(false);
+  const isAuthRoute = location.pathname.startsWith("/auth");
 
   useEffect(() => {
-    loadPets();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthed(!!session);
+      if (session) {
+        loadPets();
+      } else {
+        setMovingPets([]);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthed(!!session);
+      if (session) loadPets();
+      else setMovingPets([]);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -44,7 +65,7 @@ export const WalkingCat = () => {
 
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("walkingPetsToggle", handleStorageChange);
-    
+
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("walkingPetsToggle", handleStorageChange);
@@ -61,19 +82,14 @@ export const WalkingCat = () => {
       .from("pets")
       .select("id, name, level, rarity")
       .eq("user_id", session.user.id)
-      .limit(5); // 최대 5마리만 표시
+      .limit(5);
 
     if (data && data.length > 0) {
       const pets = data.map((pet) => {
-        // 랜덤한 시작 위치 (화면 안쪽에서 시작)
         const x = Math.random() * (window.innerWidth - 100) + 50;
         const y = Math.random() * (window.innerHeight - 100) + 50;
-        
-        // 랜덤한 속도와 방향
         const speedX = (Math.random() - 0.5) * 4;
         const speedY = (Math.random() - 0.5) * 4;
-        
-        // 다음 방향 변경 시간 (3~10초 후)
         const nextDirectionChange = Date.now() + (3000 + Math.random() * 7000);
 
         return {
@@ -88,11 +104,13 @@ export const WalkingCat = () => {
       });
 
       setMovingPets(pets);
+    } else {
+      setMovingPets([]);
     }
   };
 
   useEffect(() => {
-    if (movingPets.length === 0 || !isEnabled) return;
+    if (movingPets.length === 0 || !isEnabled || !isAuthed || isAuthRoute) return;
 
     const interval = setInterval(() => {
       setMovingPets((prevPets) =>
@@ -101,19 +119,16 @@ export const WalkingCat = () => {
           let newSpeedX = pet.speedX;
           let newSpeedY = pet.speedY;
           let newNextDirectionChange = pet.nextDirectionChange;
-          
-          // 방향 변경 시간이 되면 새로운 랜덤 방향 설정
+
           if (currentTime >= pet.nextDirectionChange) {
             newSpeedX = (Math.random() - 0.5) * 4;
             newSpeedY = (Math.random() - 0.5) * 4;
             newNextDirectionChange = currentTime + (3000 + Math.random() * 7000);
           }
-          
+
           let newX = pet.x + newSpeedX;
           let newY = pet.y + newSpeedY;
-
-          // 화면 가장자리에 부딪히면 튕겨나감
-          const petSize = 32; // w-8 = 32px
+          const petSize = 32;
           if (newX <= 0 || newX >= window.innerWidth - petSize) {
             newSpeedX = -newSpeedX;
             newX = newX <= 0 ? 0 : window.innerWidth - petSize;
@@ -137,9 +152,9 @@ export const WalkingCat = () => {
     }, 50);
 
     return () => clearInterval(interval);
-  }, [movingPets.length, isEnabled]);
+  }, [movingPets.length, isEnabled, isAuthed, isAuthRoute]);
 
-  if (!isEnabled) return null;
+  if (!isEnabled || !isAuthed || isAuthRoute) return null;
 
   return (
     <>
