@@ -48,43 +48,110 @@ export default function Calendar() {
   const [gLoading, setGLoading] = useState(false);
   const [gConnected, setGConnected] = useState<boolean>(!!getCachedAccessToken());
 
+  // async function fetchGoogleCalendar() {
+  //   try {
+  //     setGLoading(true);  
+  //     // 캐시된 토큰이 있으면 사용, 없으면 최초 동의 후 발급받기
+  //     const token = await getValidAccessToken();
+
+  //     const url =
+  //       "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
+  //       "?maxResults=50&singleEvents=true&orderBy=startTime" +
+  //       `&timeMin=${new Date().toISOString()}`;
+
+  //       const res =await fetch(url, {
+  //         headers : { Authorization: `Bearer ${token}` },
+  //       })
+
+
+  //     if (!res.ok) throw new Error("Google Calendar API 호출 실패");
+
+  //     const data = await res.json();
+  //     setGEvents(data.items || []);
+  //     setGConnected(true);
+  //   } catch (e: any) {
+  //     console.error(e);
+  //     toast({
+  //       title: "구글 캘린더 연동 실패",
+  //       description: e.message || "다시 시도해 주세요.",
+  //       variant: "destructive",
+  //     });
+  //   } finally {
+  //     setGLoading(false);
+  //   }
+  // }
+
   async function fetchGoogleCalendar() {
+  try {
+    setGLoading(true);
+    const token = await getValidAccessToken();
+
+    // 과거 30일 ~ 미래 60일 구간으로 넉넉하게
+    const now = new Date();
+    const timeMin = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const timeMax = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+    const url =
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
+      `?singleEvents=true&orderBy=startTime&maxResults=100` +
+      `&timeMin=${encodeURIComponent(timeMin)}` +
+      `&timeMax=${encodeURIComponent(timeMax)}`;
+
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+
+    console.log("[GCAL] items", Array.isArray(data.items) ? data.items.length : 0);
+    if (!res.ok) throw new Error(data.error?.message || "Google Calendar API 호출 실패");
+
+    setGEvents(data.items || []);
+    setGConnected(true);
+  } catch (e: any) {
+    console.error(e);
+    toast({
+      title: "구글 캘린더 연동 실패",
+      description: e.message || "다시 시도해 주세요.",
+      variant: "destructive",
+    });
+  } finally {
+    setGLoading(false);
+  }
+}
+
+
+  async function debugListCalendars() {
     try {
-      setGLoading(true);
-      // 캐시된 토큰이 있으면 사용, 없으면 최초 동의 후 발급받기
       const token = await getValidAccessToken();
-
-      const url =
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
-        "?maxResults=50&singleEvents=true&orderBy=startTime" +
-        `&timeMin=${new Date().toISOString()}`;
-
-        const res =await fetch(url, {
-          headers : { Authorization: `Bearer ${token}` },
-        })
-
-
-      if (!res.ok) throw new Error("Google Calendar API 호출 실패");
-
+      const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
-      setGEvents(data.items || []);
-      setGConnected(true);
+      console.log("[GCAL] calendarList", data);
+      toast({
+        title: "콘솔에서 캘린더 목록 확인!",
+        description: `${data.items?.length || 0}개의 캘린더가 있습니다.`,
+      });
     } catch (e: any) {
       console.error(e);
       toast({
-        title: "구글 캘린더 연동 실패",
-        description: e.message || "다시 시도해 주세요.",
+        title: "캘린더 목록 조회 실패",
+        description: e.message,
         variant: "destructive",
       });
-    } finally {
-      setGLoading(false);
     }
   }
+
+
+
 
   useEffect(() => {
     checkAuth();
     loadEvents();
+  
+    if (getCachedAccessToken()) {
+      fetchGoogleCalendar(); 
+    }
   }, []);
+
 
   const checkAuth = async () => {
     const {
