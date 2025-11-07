@@ -137,7 +137,6 @@ export default function Pets() {
     } = await supabase.auth.getSession();
     if (!session) return;
 
-    // Get current main pet to check last_main_change
     const { data: currentMainPet } = await supabase
       .from("pets")
       .select("last_main_change")
@@ -145,7 +144,7 @@ export default function Pets() {
       .eq("is_main", true)
       .maybeSingle();
 
-    // Check if 24 hours have passed
+
     if (currentMainPet && !canChangeMainPet(currentMainPet.last_main_change)) {
       const timeLeft = getTimeUntilChange(currentMainPet.last_main_change);
       toast({
@@ -156,13 +155,11 @@ export default function Pets() {
       return;
     }
 
-    // Set all pets to not main
     await supabase
       .from("pets")
       .update({ is_main: false })
       .eq("user_id", session.user.id);
 
-    // Set selected pet as main with current timestamp
     const { error } = await supabase
       .from("pets")
       .update({ 
@@ -189,10 +186,10 @@ export default function Pets() {
   const getRarityByProbability = (): Pet["rarity"] => {
     const rand = Math.random() * 100;
     
-    if (rand < 1) return "legendary"; // 1%
-    if (rand < 10) return "epic"; // 9%
-    if (rand < 32) return "rare"; // 22%
-    return "common"; // 68%
+    if (rand < 1) return "legendary";
+    if (rand < 10) return "epic";
+    if (rand < 32) return "rare";
+    return "common"; 
   };
 
   const createPet = async () => {
@@ -213,7 +210,6 @@ export default function Pets() {
 
     setLoading(true);
 
-    // Generate random rarity and name
     const rarity = getRarityByProbability();
     const name = getRandomPetName();
 
@@ -236,7 +232,6 @@ export default function Pets() {
         .update({ amount: powder - cost })
         .eq("user_id", session.user.id);
 
-      // Show reveal animation
       setRevealPet({ name, rarity });
       setShowReveal(true);
       
