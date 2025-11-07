@@ -101,6 +101,7 @@ export default function Navigation() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-b-2 border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
+          {/* Left Section - Logo and Pet Toggle */}
           <div className="flex items-center gap-2">
             <Link to="/" className="flex items-center gap-2">
               <div className="w-10 h-10 bg-gradient-primary rounded-sm flex items-center justify-center shadow-neon">
@@ -125,6 +126,8 @@ export default function Navigation() {
               </span>
             </Button>
           </div>
+
+          {/* Center Section - Navigation Items */}
           <div className="flex items-center gap-2 sm:gap-4">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -146,6 +149,8 @@ export default function Navigation() {
               );
             })}
           </div>
+
+          {/* Right Section - User Info and Logout */}
           <div className="flex items-center gap-2">
             {userProfile && (
               <>
