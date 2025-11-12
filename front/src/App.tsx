@@ -3,17 +3,18 @@ import { Toaster as Sonner } from "@/components/ui/sonner.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Navigation from "./components/Navigation.tsx";
-import { WalkingCat } from "./components/WalkingCat.tsx";
-import Home from "./pages/Home.tsx";
-import Auth from "./pages/Auth.tsx";
-import Goals from "./pages/Goals.tsx";
-import Calendar from "./pages/Calendar.tsx";
-import Pets from "./pages/Pets.tsx";
-import Community from "./pages/Community.tsx";
-import ChatRoom from "./pages/ChatRoom.tsx";
-import NotFound from "./pages/NotFound.tsx";
-import GoalsArchive from "./pages/GoalsArchive.tsx";
+import Navigation from "./components/Navigation";
+import { WalkingCat } from "./components/WalkingCat";
+import Home from "./pages/Home";
+import Auth from "./pages/Auth";
+import Goals from "./pages/Goals";
+import Calendar from "./pages/Calendar";
+import Pets from "./pages/Pets";
+import Community from "./pages/Community";
+import ChatRoom from "./pages/ChatRoom";
+import NotFound from "./pages/NotFound";
+import GoalsArchive from "./pages/GoalsArchive";
+import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
               <Route path="/chat/:roomId" element={<ChatRoom />} />
               <Route path="/goals/archive" element={<GoalsArchive />} />
               <Route path="*" element={<NotFound />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
             </Routes>
           </div>
         </div>
