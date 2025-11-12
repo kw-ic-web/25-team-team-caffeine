@@ -430,6 +430,36 @@ export type Database = {
         }
         Relationships: []
       }
+            upgrade_logs: {
+        Row: {
+          created_at: string
+          current_stars: number
+          fragments_gained: number | null
+          id: string
+          pet_id: string
+          success: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_stars: number
+          fragments_gained?: number | null
+          id?: string
+          pet_id: string
+          success: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_stars?: number
+          fragments_gained?: number | null
+          id?: string
+          pet_id?: string
+          success?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_powder: {
         Row: {
           amount: number | null
