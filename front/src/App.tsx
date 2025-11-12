@@ -14,6 +14,7 @@ import Community from "./pages/Community";
 import ChatRoom from "./pages/ChatRoom";
 import NotFound from "./pages/NotFound";
 import GoalsArchive from "./pages/GoalsArchive";
+import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
               <Route path="/chat/:roomId" element={<ChatRoom />} />
               <Route path="/goals/archive" element={<GoalsArchive />} />
               <Route path="*" element={<NotFound />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
             </Routes>
           </div>
         </div>
