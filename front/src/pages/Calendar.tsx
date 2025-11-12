@@ -1,27 +1,27 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Calendar as CalendarUI } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button.tsx";
+import { Card, CardContent } from "@/components/ui/card.tsx";
+import { Calendar as CalendarUI } from "@/components/ui/calendar.tsx";
 import { Plus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client.ts";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast.ts";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/ui/dialog.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { Label } from "@/components/ui/label.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
 
 import {
   getCalendarAccessToken,
   getCachedAccessToken,
   getValidAccessToken,
-} from "@/integrations/google/gis";
+} from "@/integrations/google/gis.ts";
 
 interface CalendarEvent {
   id: string;
@@ -47,39 +47,6 @@ export default function Calendar() {
   const [gEvents, setGEvents] = useState<any[]>([]);
   const [gLoading, setGLoading] = useState(false);
   const [gConnected, setGConnected] = useState<boolean>(!!getCachedAccessToken());
-
-  // async function fetchGoogleCalendar() {
-  //   try {
-  //     setGLoading(true);  
-  //     // 캐시된 토큰이 있으면 사용, 없으면 최초 동의 후 발급받기
-  //     const token = await getValidAccessToken();
-
-  //     const url =
-  //       "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
-  //       "?maxResults=50&singleEvents=true&orderBy=startTime" +
-  //       `&timeMin=${new Date().toISOString()}`;
-
-  //       const res =await fetch(url, {
-  //         headers : { Authorization: `Bearer ${token}` },
-  //       })
-
-
-  //     if (!res.ok) throw new Error("Google Calendar API 호출 실패");
-
-  //     const data = await res.json();
-  //     setGEvents(data.items || []);
-  //     setGConnected(true);
-  //   } catch (e: any) {
-  //     console.error(e);
-  //     toast({
-  //       title: "구글 캘린더 연동 실패",
-  //       description: e.message || "다시 시도해 주세요.",
-  //       variant: "destructive",
-  //     });
-  //   } finally {
-  //     setGLoading(false);
-  //   }
-  // }
 
   async function fetchGoogleCalendar() {
   try {
@@ -247,6 +214,17 @@ export default function Calendar() {
     );
   });
 
+  const selectedGoogleEvents = gEvents.filter((ev) => {
+  if (!date) return false;
+  const startStr = ev.start?.dateTime || ev.start?.date;
+  if (!startStr) return false;
+  const start = new Date(startStr);
+  return (
+    start.getDate() === date.getDate() &&
+    start.getMonth() === date.getMonth() &&
+    start.getFullYear() === date.getFullYear()
+  );
+});
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-6xl">

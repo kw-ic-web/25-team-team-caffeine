@@ -15,7 +15,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog.tsx";
 import PetRevealAnimation from "@/components/PetRevealAnimation.tsx";
+import UpgradeAnimation from "@/components/UpgradeAnimation.tsx";
 import { getRandomPetName } from "@/data/petNames.tsx";
+import { getExpProgress, getExpRequiredForNextLevel } from "@/utils/petLevel.ts";
+import { 
+  attemptUpgrade, 
+  getUpgradeCost,
+  UPGRADE_SUCCESS_RATES 
+} from "@/utils/upgradeSystem.ts";
 
 interface Pet {
   id: string;
@@ -52,8 +59,11 @@ export default function Pets() {
   const [revealPet, setRevealPet] = useState<{ name: string; rarity: Pet["rarity"] } | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
+  const [showUpgradeAnimation, setShowUpgradeAnimation] = useState(false);
+  const [upgradeAnimationData, setUpgradeAnimationData] = useState<{ success: boolean; } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+
 
   useEffect(() => {
     checkAuth();
@@ -137,6 +147,7 @@ export default function Pets() {
     } = await supabase.auth.getSession();
     if (!session) return;
 
+    // Get current main pet to check last_main_change
     const { data: currentMainPet } = await supabase
       .from("pets")
       .select("last_main_change")
@@ -144,7 +155,7 @@ export default function Pets() {
       .eq("is_main", true)
       .maybeSingle();
 
-
+    // Check if 24 hours have passed
     if (currentMainPet && !canChangeMainPet(currentMainPet.last_main_change)) {
       const timeLeft = getTimeUntilChange(currentMainPet.last_main_change);
       toast({
@@ -155,11 +166,13 @@ export default function Pets() {
       return;
     }
 
+    // Set all pets to not main
     await supabase
       .from("pets")
       .update({ is_main: false })
       .eq("user_id", session.user.id);
 
+    // Set selected pet as main with current timestamp
     const { error } = await supabase
       .from("pets")
       .update({ 
@@ -186,10 +199,10 @@ export default function Pets() {
   const getRarityByProbability = (): Pet["rarity"] => {
     const rand = Math.random() * 100;
     
-    if (rand < 1) return "legendary";
-    if (rand < 10) return "epic";
-    if (rand < 32) return "rare";
-    return "common"; 
+    if (rand < 1) return "legendary"; // 1%
+    if (rand < 10) return "epic"; // 9%
+    if (rand < 32) return "rare"; // 22%
+    return "common"; // 68%
   };
 
   const createPet = async () => {
@@ -210,6 +223,7 @@ export default function Pets() {
 
     setLoading(true);
 
+    // Generate random rarity and name
     const rarity = getRarityByProbability();
     const name = getRandomPetName();
 
@@ -232,6 +246,7 @@ export default function Pets() {
         .update({ amount: powder - cost })
         .eq("user_id", session.user.id);
 
+      // Show reveal animation
       setRevealPet({ name, rarity });
       setShowReveal(true);
       
@@ -274,70 +289,100 @@ export default function Pets() {
   const upgradePet = async () => {
     if (!selectedPet) return;
 
-    const cost = (selectedPet.stars + 1) * 100;
-    if (powder < cost) {
-      toast({
-        title: "가루가 부족합니다",
-        description: `${cost} 가루가 필요합니다.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
+    const cost = getUpgradeCost(selectedPet.stars);
+    
     const {
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) return;
 
     setLoading(true);
+// (선택) 성공 확률 함수가 객체를 반환했다면 boolean 반환으로 바꿔줘.
+function attemptUpgrade(stars: number): boolean {
+  const p = Math.max(0.1, 0.7 - stars * 0.1); // 예: 별 높을수록 확률↓
+  return Math.random() < p;
+}
 
-    const { error } = await supabase
-      .from("pets")
-      .update({ stars: selectedPet.stars + 1 })
-      .eq("id", selectedPet.id);
+const handleUpgrade = async () => {
+  try {
+    setLoading(true);
 
-    if (error) {
-      toast({
-        title: "오류 발생",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      await supabase
-        .from("user_powder")
-        .update({ amount: powder - cost })
-        .eq("user_id", session.user.id);
+    // 비용 차감 (성공/실패와 무관하게 소모)
+    await supabase
+      .from("user_powder")
+      .update({ amount: powder - cost })
+      .eq("user_id", session.user.id);
 
-      toast({
-        title: "강화 완료!",
-        description: `${cost} 가루를 사용했습니다.`,
-      });
-      setOpenUpgrade(false);
+    // 확률 강화
+    const success = attemptUpgrade(selectedPet.stars);
+
+    // 로그 기록 (파편 필드 제거)
+    await supabase.from("upgrade_logs").insert({
+      pet_id: selectedPet.id,
+      user_id: session.user.id,
+      current_stars: selectedPet.stars,
+      success,
+    });
+
+    // 애니메이션 표시 (파편 데이터 제거)
+    setUpgradeAnimationData({ success });
+    setShowUpgradeAnimation(true);
+    setOpenUpgrade(false);
+
+    // 애니메이션 후 결과 반영
+    setTimeout(async () => {
+      if (success) {
+        await supabase
+          .from("pets")
+          .update({ stars: selectedPet.stars + 1 })
+          .eq("id", selectedPet.id);
+
+        toast({
+          title: "강화 성공!",
+          description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
+        });
+      } else {
+        toast({
+          title: "강화 실패",
+          description: "아쉽게도 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+
       setSelectedPet(null);
-      loadPets();
-      loadPowder();
-    }
-
+      // setUseGuaranteedUpgrade(false);  // ← 보장강화 제거로 더 이상 필요 없음
+      await Promise.all([loadPets(), loadPowder()]);
+    }, 2500);
+  } catch (error) {
+    console.error("Upgrade error:", error);
+    toast({
+      title: "오류 발생",
+      description: "강화 중 오류가 발생했습니다.",
+      variant: "destructive",
+    });
+  } finally {
     setLoading(false);
-  };
+  }
+};
+}
 
-  return (
-    <div className="min-h-screen px-4 py-8">
-      <div className="container mx-auto max-w-6xl">
-        <div className="mb-8 animate-slide-up">
-          <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">나의 펫</h1>
+return (
+  <div className="min-h-screen px-4 py-8">
+    <div className="container mx-auto max-w-6xl">
+      <div className="mb-8 animate-slide-up">
+        <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">나의 펫</h1>
 
-          <Card className="bg-gradient-primary border-2 border-primary shadow-neon mb-6">
-            <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-warning rounded-lg flex items-center justify-center animate-pulse-glow">
-                  <Sparkles className="w-8 h-8 text-warning-foreground" />
-                </div>
-                <div>
-                  <div className="font-korean text-sm text-primary-foreground/80">보유 가루</div>
-                  <div className="font-pixel text-2xl text-primary-foreground">{powder}</div>
-                </div>
+        <Card className="bg-gradient-primary border-2 border-primary shadow-neon mb-6">
+          <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-warning rounded-lg flex items-center justify-center animate-pulse-glow">
+                <Sparkles className="w-8 h-8 text-warning-foreground" />
               </div>
+              <div>
+                <div className="font-korean text-sm text-primary-foreground/80">보유 가루</div>
+                <div className="font-pixel text-2xl text-primary-foreground">{powder}</div>
+              </div>
+            </div>
               <Button 
                 variant="hero" 
                 size="lg"
@@ -415,9 +460,14 @@ export default function Pets() {
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs font-korean text-muted-foreground">
                     <span>경험치</span>
-                    <span>{pet.experience}%</span>
+                    <span>
+                      {pet.experience} / {getExpRequiredForNextLevel(pet.level) || "MAX"}
+                    </span>
                   </div>
-                  <Progress value={pet.experience} className="h-2" />
+                  <Progress 
+                    value={getExpProgress(pet.experience, pet.level)} 
+                    className="h-2" 
+                  />
                 </div>
 
                 <div className="flex gap-2">
@@ -501,25 +551,30 @@ export default function Pets() {
                     ))}
                   </div>
                 </div>
+                
                 <div className="p-4 bg-muted rounded-sm space-y-2">
                   <p className="font-korean text-sm text-muted-foreground">
                     현재 강화 단계: {selectedPet.stars}★
                   </p>
-                  <p className="font-korean text-sm text-muted-foreground">
-                    강화 비용: {(selectedPet.stars + 1) * 100} 가루
+                  <p className="font-korean text-sm text-foreground font-bold">
+                    강화 성공 확률: {UPGRADE_SUCCESS_RATES[selectedPet.stars] || 0}%
                   </p>
                   <p className="font-korean text-sm text-muted-foreground">
-                    보유 가루: {powder}
+                    실패 시: 별 조각 +1
                   </p>
                 </div>
-                <Button
-                  onClick={upgradePet}
-                  variant="hero"
-                  className="w-full"
-                  disabled={loading}
-                >
-                  {loading ? "강화 중..." : "강화하기"}
-                </Button>
+
+                {/* Normal Upgrade */}
+                <div className="p-4 bg-card/50 rounded-sm border-2 border-border space-y-2">
+                  <h4 className="font-pixel text-sm text-foreground">일반 강화</h4>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    비용: {getUpgradeCost(selectedPet.stars)} 가루
+                  </p>
+                  <p className="font-korean text-sm text-muted-foreground">
+                    보유: {powder} 가루
+                  </p>
+                    {loading ? "강화 중..." : "일반 강화"}
+                </div>
               </div>
             )}
           </DialogContent>
@@ -561,4 +616,4 @@ export default function Pets() {
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(" ");
-}
+  }

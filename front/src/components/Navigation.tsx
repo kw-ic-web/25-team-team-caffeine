@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Home, Target, Calendar, Heart, Users, Eye, EyeOff, LogOut } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Home, Target, Calendar, Heart, Users, Eye, EyeOff, LogOut, Trophy } from "lucide-react";
+import { cn } from "@/lib/utils.ts";
+import { Button } from "@/components/ui/button.tsx";
+import { supabase } from "@/integrations/supabase/client.ts";
+import { useToast } from "@/hooks/use-toast.ts";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar.tsx";
 
 const navItems = [
   { path: "/", icon: Home, label: "홈" },
@@ -13,6 +13,7 @@ const navItems = [
   { path: "/calendar", icon: Calendar, label: "캘린더" },
   { path: "/pets", icon: Heart, label: "펫" },
   { path: "/community", icon: Users, label: "커뮤니티" },
+  { path: "/ranking", icon: Trophy, label: "랭킹" },
 ];
 
 export default function Navigation() {
