@@ -7,6 +7,8 @@ import { Heart, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { LogIn } from "lucide-react";
+
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -58,6 +60,28 @@ export default function Auth() {
       setLoading(false);
     }
   };
+
+
+  const handleGoogleLogin = async () => {
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) throw error;
+  } catch (err: any) {
+    toast({
+      title: "구글 로그인 실패",
+      description: err?.message ?? "다시 시도해 주세요.",
+      variant: "destructive",
+    });
+  }
+};
+
+
+
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -144,6 +168,18 @@ export default function Auth() {
                   : "회원가입"}
               </Button>
             </form>
+            <div className="mt-4">
+              <Button
+                type="button"
+                onClick={handleGoogleLogin}
+                variant="outline"
+                className="w-full flex items-center gap-2"
+              >
+                <LogIn className="w-4 h-4" />
+                Google 계정으로 시작하기
+              </Button>
+            </div>
+
 
             <div className="mt-4 text-center">
               <button

@@ -101,7 +101,7 @@ export default function Navigation() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-b-2 border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          {/* Left Section - Logo and Pet Toggle */}
+          {/* 왼쪽 부분 */}
           <div className="flex items-center gap-2">
             <Link to="/" className="flex items-center gap-2">
               <div className="w-10 h-10 bg-gradient-primary rounded-sm flex items-center justify-center shadow-neon">
@@ -127,7 +127,7 @@ export default function Navigation() {
             </Button>
           </div>
 
-          {/* Center Section - Navigation Items */}
+          {/* 가운데 부분*/}
           <div className="flex items-center gap-2 sm:gap-4">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -150,7 +150,7 @@ export default function Navigation() {
             })}
           </div>
 
-          {/* Right Section - User Info and Logout */}
+          {/* 오른쪽 섹션 */}
           <div className="flex items-center gap-2">
             {userProfile && (
               <>
@@ -175,7 +175,60 @@ export default function Navigation() {
                 </Button>
               </>
             )}
-          </div>
+          </div> 
+          {/*구글로 로그인 하기 헤더 버튼 만들려다가 좀 아닌 것 같아서 일단 주석으로 냄겨뒀어용 - 준호*/}
+          {/* <div className="flex items-center gap-2">
+            {userProfile ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Avatar className="w-8 h-8 border-2 border-primary">
+                    <AvatarFallback className="bg-gradient-primary text-primary-foreground font-pixel text-xs">
+                      {userProfile.display_name?.[0] || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-korean text-sm text-foreground hidden sm:inline">
+                    {userProfile.display_name}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="flex items-center gap-1 px-2 sm:px-3"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline font-korean text-xs">로그아웃</span>
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const { error } = await supabase.auth.signInWithOAuth({
+                      provider: "google",
+                      options: {
+                        redirectTo: `${window.location.origin}/auth/callback`,
+                      },
+                    });
+                    if (error) throw error;
+                  } catch (err: any) {
+                    toast({
+                      title: "로그인 실패",
+                      description: err.message ?? "다시 시도해 주세요.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                className="flex items-center gap-1 px-2 sm:px-3"
+              >
+                <Home className="w-4 h-4" />
+                <span className="hidden sm:inline font-korean text-xs">구글로 시작하기</span>
+              </Button>
+            )}
+          </div> */}
+
         </div>
       </div>
     </nav>
