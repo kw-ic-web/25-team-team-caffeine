@@ -315,6 +315,39 @@ export type Database = {
         }
         Relationships: []
       }
+      /** NEW: 펫 클릭 로그 */
+      pet_clicks: {
+        Row: {
+          id: string
+          pet_id: string
+          clicked_by_user_id: string
+          click_date: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          pet_id: string
+          clicked_by_user_id: string
+          click_date: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          pet_id?: string
+          clicked_by_user_id?: string
+          click_date?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_clicks_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_comments: {
         Row: {
           content: string
@@ -379,6 +412,41 @@ export type Database = {
           },
         ]
       }
+      post_like_exp: {
+        Row: {
+          id: string
+          post_id: string
+          user_id: string
+          exp_gained: number
+          exp_date: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          post_id: string
+          user_id: string
+          exp_gained: number
+          exp_date: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          post_id?: string
+          user_id?: string
+          exp_gained?: number
+          exp_date?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_like_exp_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           content: string
@@ -430,7 +498,7 @@ export type Database = {
         }
         Relationships: []
       }
-            upgrade_logs: {
+      upgrade_logs: {
         Row: {
           created_at: string
           current_stars: number
