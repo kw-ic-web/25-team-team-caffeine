@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Heart, Zap } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from "lucide-react";
@@ -17,7 +17,7 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
+ const { login, register } = useAuth();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,31 +25,15 @@ export default function Auth() {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
+        await login(email, password);
         toast({ title: "로그인 성공!", description: "환영합니다!" });
         navigate("/");
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              display_name: displayName || "모험가",
-            },
-          },
-        });
-        if (error) throw error;
-        toast({
-          title: "회원가입 성공!",
-          description: "자동으로 로그인되었습니다.",
-        });
+        await register(email, password, displayName || "모험가");
+        toast({ title: "회원가입 성공!", description: "자동으로 로그인되었습니다." });
         navigate("/");
       }
+
     } catch (error: any) {
       toast({
         title: "오류 발생",
@@ -62,23 +46,13 @@ export default function Auth() {
   };
 
 
-  const handleGoogleLogin = async () => {
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (error) throw error;
-  } catch (err: any) {
-    toast({
-      title: "구글 로그인 실패",
-      description: err?.message ?? "다시 시도해 주세요.",
-      variant: "destructive",
-    });
-  }
-};
+// +  TODO: 백엔드에 Google OAuth 구현 후 연결
+// + const handleGoogleLogin = async () => {
+// +   toast({
+// +     title: "준비 중 기능",
+// +     description: "Google 로그인은 아직 구현되지 않았습니다.",
+// +   });
+// + };
 
 
 

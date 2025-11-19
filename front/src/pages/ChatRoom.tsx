@@ -2,12 +2,12 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
 import { Send, ArrowLeft, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { petsApi } from "@/lib/api";
 
 interface Message {
   id: string;
@@ -44,20 +44,6 @@ interface MovingPet {
   speedY: number;
 }
 
-type SignalPayload =
-  | {
-      type: "offer" | "answer";
-      from: string;
-      to?: string;
-      sdp: RTCSessionDescriptionInit;
-    }
-  | {
-      type: "candidate";
-      from: string;
-      to?: string;
-      candidate: RTCIceCandidateInit;
-    };
-
 const rarityGradients = {
   common: "from-muted to-muted-foreground",
   rare: "from-secondary to-secondary/70",
@@ -65,14 +51,11 @@ const rarityGradients = {
   legendary: "from-warning to-warning/70",
 };
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: ["stun:stun.l.google.com:19302", "stun:global.stun.twilio.com:3478"] },
-];
-
 export default function ChatRoom() {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -83,13 +66,10 @@ export default function ChatRoom() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const signalChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const dataChannelsRef = useRef<Map<string, RTCDataChannel>>(new Map());
-  const knownPeersRef = useRef<Set<string>>(new Set());
-
   const nowISO = () => new Date().toISOString();
+  const storageKey = `chat_messages_${roomId}`;
 
+  // 채팅방 입장 시: 걷는 펫 끄기 + 초기화
   useEffect(() => {
     const previousState = localStorage.getItem("walkingPetsEnabled");
     localStorage.setItem("walkingPetsEnabled", "false");
@@ -100,16 +80,18 @@ export default function ChatRoom() {
     return () => {
       localStorage.setItem("walkingPetsEnabled", previousState || "true");
       window.dispatchEvent(new Event("walkingPetsToggle"));
-      cleanupWebRTC();
     };
-  }, [roomId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, user]);
 
+  // 새 메시지 오면 스크롤 맨 아래로
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
+  // 펫 움직임 애니메이션
   useEffect(() => {
     if (movingPets.length === 0 || !chatContainerRef.current) return;
 
@@ -127,12 +109,12 @@ export default function ChatRoom() {
           const maxY = containerRect.height - petSize;
 
           if (newX <= 0 || newX >= maxX) {
-            pet.speedX = -pet.speedX;
+            pet = { ...pet, speedX: -pet.speedX };
             newX = newX <= 0 ? 0 : maxX;
           }
 
           if (newY <= 0 || newY >= maxY) {
-            pet.speedY = -pet.speedY;
+            pet = { ...pet, speedY: -pet.speedY };
             newY = newY <= 0 ? 0 : maxY;
           }
 
@@ -149,11 +131,7 @@ export default function ChatRoom() {
   }, [movingPets.length]);
 
   const initializeRoom = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session) {
+    if (!user) {
       toast({
         title: "로그인이 필요합니다",
         variant: "destructive",
@@ -162,388 +140,110 @@ export default function ChatRoom() {
       return;
     }
 
-    setCurrentUserId(session.user.id);
+    setCurrentUserId(user.id);
 
-    const { data: mainPet } = await supabase
-      .from("pets")
-      .select("id")
-      .eq("user_id", session.user.id)
-      .eq("is_main", true)
-      .maybeSingle();
-
-    const { data: existingParticipant } = await supabase
-      .from("chat_participants")
-      .select("id")
-      .eq("room_id", roomId)
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-
-    if (existingParticipant) {
-      await supabase
-        .from("chat_participants")
-        .update({ pet_id: mainPet?.id })
-        .eq("id", existingParticipant.id);
-    } else {
-      await supabase.from("chat_participants").insert({
-        room_id: roomId as string,
-        user_id: session.user.id,
-        pet_id: mainPet?.id,
-      });
-    }
-
-    await loadMessages();
-    await loadParticipants();
-    const channel = supabase.channel(`webrtc:${roomId}`, {
-      config: {
-        presence: { key: session.user.id },
-        broadcast: { self: true },
-      },
-    });
-
-    channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        const peerIds = Object.keys(state).filter((id) => id !== session.user.id);
-        const newPeers = new Set(peerIds);
-        knownPeersRef.current = newPeers;
-
-        for (const peerId of newPeers) {
-          if (!peerConnectionsRef.current.has(peerId)) {
-            if (session.user.id < peerId) {
-              createPeerConnection(peerId, true);
-            } else {
-              createPeerConnection(peerId, false);
-            }
-          }
-        }
-
-        for (const [peerId, pc] of peerConnectionsRef.current) {
-          if (!newPeers.has(peerId)) {
-            pc.close();
-            peerConnectionsRef.current.delete(peerId);
-            dataChannelsRef.current.delete(peerId);
-          }
-        }
-      })
-      .on("broadcast", { event: "webrtc-signal" }, ({ payload }) => {
-        const msg = payload as SignalPayload;
-        if (!currentUserId) return;
-
-        if (msg.to && msg.to !== currentUserId) return;
-
-        if (msg.from === currentUserId) return;
-
-        let pc = peerConnectionsRef.current.get(msg.from);
-        if (!pc) {
-          pc = createPeerConnection(msg.from, false);
-        }
-
-        if (msg.type === "offer") {
-          handleRemoteOffer(msg.from, msg.sdp);
-        } else if (msg.type === "answer") {
-          handleRemoteAnswer(msg.from, msg.sdp);
-        } else if (msg.type === "candidate") {
-          handleRemoteCandidate(msg.from, msg.candidate);
-        }
-      });
-
-    channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        channel.track({ user_id: session.user.id, at: Date.now() });
-      }
-    });
-
-    signalChannelRef.current = channel;
+    await loadMessages(user);
+    await loadParticipants(user);
   };
 
-  const cleanupWebRTC = () => {
-    if (signalChannelRef.current) {
-      supabase.removeChannel(signalChannelRef.current);
-      signalChannelRef.current = null;
-    }
-    for (const [, pc] of peerConnectionsRef.current) {
-      try {
-        pc.close();
-      } catch {}
-    }
-    peerConnectionsRef.current.clear();
-    dataChannelsRef.current.clear();
-    knownPeersRef.current.clear();
-  };
-
-  const broadcastSignal = (payload: SignalPayload) => {
-    signalChannelRef.current?.send({
-      type: "broadcast",
-      event: "webrtc-signal",
-      payload,
-    });
-  };
-
-  const createPeerConnection = (peerId: string, isInitiator: boolean) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate && currentUserId) {
-        broadcastSignal({
-          type: "candidate",
-          from: currentUserId,
-          to: peerId,
-          candidate: e.candidate.toJSON(),
-        });
-      }
-    };
-
-    pc.ondatachannel = (ev) => {
-      const channel = ev.channel;
-      if (channel.label === "chat") {
-        setupDataChannel(peerId, channel);
-      }
-    };
-
-    peerConnectionsRef.current.set(peerId, pc);
-
-    if (isInitiator) {
-      const dc = pc.createDataChannel("chat", { ordered: true });
-      setupDataChannel(peerId, dc);
-
-      (async () => {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          if (currentUserId) {
-            broadcastSignal({
-              type: "offer",
-              from: currentUserId,
-              to: peerId,
-              sdp: offer,
-            });
-          }
-        } catch (err) {
-          console.error("createOffer error:", err);
-        }
-      })();
-    }
-
-    return pc;
-  };
-
-  const setupDataChannel = (peerId: string, dc: RTCDataChannel) => {
-    dataChannelsRef.current.set(peerId, dc);
-    dc.onopen = () => {
-      // console.log("DataChannel open:", peerId);
-    };
-    dc.onclose = () => {
-      // console.log("DataChannel close:", peerId);
-      dataChannelsRef.current.delete(peerId);
-    };
-    dc.onerror = (e) => {
-      console.error("DataChannel error:", e);
-    };
-    dc.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        if (data?.type === "chat") {
-          const msg: Message = {
-            id: data.id,
-            user_id: data.user_id,
-            message: data.text,
-            created_at: data.created_at,
-          };
-          setMessages((prev) => [...prev, msg]);
-        }
-      } catch (err) {
-        console.error("Invalid DataChannel payload:", err);
-      }
-    };
-  };
-
-  const handleRemoteOffer = async (from: string, sdp: RTCSessionDescriptionInit) => {
-    const pc = peerConnectionsRef.current.get(from);
-    if (!pc) return;
+  const loadMessages = async (currentUser: { id: string; displayName?: string | null }) => {
     try {
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      if (currentUserId) {
-        broadcastSignal({
-          type: "answer",
-          from: currentUserId,
-          to: from,
-          sdp: answer,
-        });
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) {
+        setMessages([]);
+        return;
       }
+      const parsed: Message[] = JSON.parse(raw);
+
+      // display_name이 없는 메시지는 현재 유저 이름으로 채워줌
+      const enriched = parsed.map((m) => ({
+        ...m,
+        profiles: m.profiles ?? { display_name: currentUser.displayName ?? "모험가" },
+      }));
+
+      setMessages(enriched);
     } catch (err) {
-      console.error("handleRemoteOffer error:", err);
-    }
-  };
-
-  const handleRemoteAnswer = async (from: string, sdp: RTCSessionDescriptionInit) => {
-    const pc = peerConnectionsRef.current.get(from);
-    if (!pc) return;
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    } catch (err) {
-      console.error("handleRemoteAnswer error:", err);
-    }
-  };
-
-  const handleRemoteCandidate = async (from: string, candidate: RTCIceCandidateInit) => {
-    const pc = peerConnectionsRef.current.get(from);
-    if (!pc) return;
-    try {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (err) {
-      console.error("handleRemoteCandidate error:", err);
-    }
-  };
-
-  const loadMessages = async () => {
-    const { data: messagesData, error } = await supabase
-      .from("chat_messages")
-      .select("id, user_id, message, created_at")
-      .eq("room_id", roomId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("Error loading messages:", error);
-      return;
-    }
-
-    if (!messagesData) {
+      console.error("failed to load messages from localStorage", err);
       setMessages([]);
-      return;
     }
-
-    const userIds = [...new Set(messagesData.map((m) => m.user_id))];
-    const { data: profilesData } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .in("user_id", userIds);
-
-    const profilesMap = new Map(profilesData?.map((p) => [p.user_id, p]) || []);
-
-    const enrichedMessages = messagesData.map((msg) => ({
-      ...msg,
-      profiles: profilesMap.get(msg.user_id),
-    }));
-
-    setMessages(enrichedMessages);
   };
 
-  const loadParticipants = async () => {
-    const { data: participantsData, error } = await supabase
-      .from("chat_participants")
-      .select("id, user_id, pet_id")
-      .eq("room_id", roomId);
+  const loadParticipants = async (currentUser: { id: string; displayName?: string | null }) => {
+    try {
+      // 현재는 "나 혼자" + 내 메인 펫만 참가자로 표시
+      const pets = await petsApi.list();
+      const mainPet = pets.find((p) => p.is_main);
 
-    if (error) {
-      console.error("Error loading participants:", error);
-      return;
-    }
+      const baseParticipant: Participant = {
+        id: currentUser.id,
+        user_id: currentUser.id,
+        profiles: { display_name: currentUser.displayName ?? "모험가" },
+        pets: mainPet
+          ? {
+              id: mainPet.id,
+              name: mainPet.name,
+              level: mainPet.level,
+              rarity: mainPet.rarity as "common" | "rare" | "epic" | "legendary",
+            }
+          : undefined,
+      };
 
-    if (!participantsData) {
-      setParticipants([]);
-      setMovingPets([]);
-      return;
-    }
+      setParticipants([baseParticipant]);
 
-    const userIds = participantsData.map((p) => p.user_id);
+      if (chatContainerRef.current && mainPet) {
+        const containerRect = chatContainerRef.current.getBoundingClientRect();
+        const x = Math.random() * (containerRect.width - 100) + 50;
+        const y = Math.random() * (containerRect.height - 100) + 50;
+        const speedX = (Math.random() - 0.5) * 3;
+        const speedY = (Math.random() - 0.5) * 3;
 
-    const { data: profilesData } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .in("user_id", userIds);
-
-    const { data: petsData } = await supabase
-      .from("pets")
-      .select("id, name, level, rarity, user_id")
-      .in("user_id", userIds)
-      .eq("is_main", true);
-
-    const profilesMap = new Map(profilesData?.map((p) => [p.user_id, p]) || []);
-    const petsMap = new Map(petsData?.map((p) => [p.user_id, p]) || []);
-
-    const enrichedParticipants = participantsData.map((participant) => ({
-      ...participant,
-      profiles: profilesMap.get(participant.user_id),
-      pets: petsMap.get(participant.user_id),
-    }));
-
-    setParticipants(enrichedParticipants as Participant[]);
-
-    if (chatContainerRef.current) {
-      const containerRect = chatContainerRef.current.getBoundingClientRect();
-      const pets = enrichedParticipants
-        .filter((p) => p.pets)
-        .map((p) => {
-          const pet = p.pets!;
-          const x = Math.random() * (containerRect.width - 100) + 50;
-          const y = Math.random() * (containerRect.height - 100) + 50;
-          const speedX = (Math.random() - 0.5) * 3;
-          const speedY = (Math.random() - 0.5) * 3;
-
-          return {
-            id: pet.id,
-            name: pet.name,
-            level: pet.level,
-            rarity: pet.rarity as "common" | "rare" | "epic" | "legendary",
+        setMovingPets([
+          {
+            id: mainPet.id,
+            name: mainPet.name,
+            level: mainPet.level,
+            rarity: mainPet.rarity as "common" | "rare" | "epic" | "legendary",
             x,
             y,
             speedX,
             speedY,
-          };
-        });
-
-      setMovingPets(pets);
+          },
+        ]);
+      } else {
+        setMovingPets([]);
+      }
+    } catch (err) {
+      console.error("failed to load participants / pets", err);
+      setParticipants([]);
+      setMovingPets([]);
     }
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !currentUserId) return;
+    if (!newMessage.trim() || !currentUserId || !user) return;
 
-    const out = {
-      type: "chat",
+    const out: Message = {
       id: crypto.randomUUID(),
       user_id: currentUserId,
-      text: newMessage.trim(),
+      message: newMessage.trim(),
       created_at: nowISO(),
+      profiles: {
+        display_name: user.displayName ?? "모험가",
+      },
     };
 
-    let sent = false;
-    for (const [, dc] of dataChannelsRef.current) {
-      if (dc.readyState === "open") {
-        dc.send(JSON.stringify(out));
-        sent = true;
+    setMessages((prev) => {
+      const next = [...prev, out];
+      // localStorage에 저장 (현재는 로컬 전용 채팅)
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch (err) {
+        console.error("failed to save messages to localStorage", err);
       }
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: out.id,
-        user_id: out.user_id,
-        message: out.text,
-        created_at: out.created_at,
-      },
-    ]);
-
-    setNewMessage("");
-    if (!sent) {
-      toast({ title: "아직 상대가 연결되지 않았어요.", description: "상대가 입장하면 메시지를 받을 수 있어요." });
-    }
-    const { error } = await supabase.from("chat_messages").insert({
-      id: out.id,
-      room_id: roomId,
-      user_id: currentUserId,
-      message: out.text,
-      created_at: out.created_at,
+      return next;
     });
 
-    if (error) {
-      console.error("Error saving message:", error);
-      toast({ title: "메시지 저장 실패", variant: "destructive" });
-    }
-
+    setNewMessage("");
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -554,8 +254,7 @@ export default function ChatRoom() {
   };
 
   const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-      return new Date(timestamp).toLocaleTimeString("ko-KR", {
+    return new Date(timestamp).toLocaleTimeString("ko-KR", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
@@ -581,10 +280,16 @@ export default function ChatRoom() {
 
       <div className="flex-1 relative overflow-hidden" ref={chatContainerRef}>
         {movingPets.map((pet) => (
-          <div key={pet.id} className="absolute z-10" style={{ left: `${pet.x}px`, top: `${pet.y}px` }}>
+          <div
+            key={pet.id}
+            className="absolute z-10"
+            style={{ left: `${pet.x}px`, top: `${pet.y}px` }}
+          >
             <div className="relative">
               <div
-                className={`w-8 h-8 bg-gradient-to-br ${rarityGradients[pet.rarity]} rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}
+                className={`w-8 h-8 bg-gradient-to-br ${
+                  rarityGradients[pet.rarity]
+                } rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}
               >
                 <Heart className="w-4 h-4 text-primary-foreground animate-pulse-glow" />
               </div>
@@ -602,8 +307,15 @@ export default function ChatRoom() {
             {messages.map((msg) => {
               const isMyMessage = msg.user_id === currentUserId;
               return (
-                <div key={msg.id} className={`flex ${isMyMessage ? "justify-end" : "justify-start"}`}>
-                  <div className={`flex gap-2 max-w-[70%] ${isMyMessage ? "flex-row-reverse" : "flex-row"}`}>
+                <div
+                  key={msg.id}
+                  className={`flex ${isMyMessage ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`flex gap-2 max-w-[70%] ${
+                      isMyMessage ? "flex-row-reverse" : "flex-row"
+                    }`}
+                  >
                     {!isMyMessage && (
                       <Avatar className="w-8 h-8 border-2 border-primary flex-shrink-0">
                         <AvatarFallback className="bg-gradient-primary text-primary-foreground font-pixel text-xs">
@@ -611,7 +323,11 @@ export default function ChatRoom() {
                         </AvatarFallback>
                       </Avatar>
                     )}
-                    <div className={`flex flex-col ${isMyMessage ? "items-end" : "items-start"}`}>
+                    <div
+                      className={`flex flex-col ${
+                        isMyMessage ? "items-end" : "items-start"
+                      }`}
+                    >
                       {!isMyMessage && (
                         <span className="font-korean text-xs text-muted-foreground mb-1 px-2">
                           {msg.profiles?.display_name || "알 수 없음"}
@@ -619,7 +335,9 @@ export default function ChatRoom() {
                       )}
                       <div
                         className={`px-4 py-2 rounded-lg ${
-                          isMyMessage ? "bg-primary text-primary-foreground" : "bg-card border-2 border-border"
+                          isMyMessage
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-card border-2 border-border"
                         }`}
                       >
                         <p className="font-korean text-sm">{msg.message}</p>

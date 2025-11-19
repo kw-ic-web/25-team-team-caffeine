@@ -3,10 +3,19 @@ import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Target, Heart, Zap, TrendingUp, CheckCircle2, XCircle, Clock } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import type { Session } from "@supabase/supabase-js";
+import {
+  Target,
+  Heart,
+  Zap,
+  TrendingUp,
+  CheckCircle2,
+  XCircle,
+  Clock,
+} from "lucide-react";
+
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { goalsApi, petsApi, type Goal } from "@/lib/api";
 
 import Pet1Img from "@/petimg/Pet1.png";
 import Pet2Img from "@/petimg/Pet2.png";
@@ -17,21 +26,6 @@ type StatCardData = {
   value: number;
   icon: ComponentType<{ className?: string }>;
   color: string;
-};
-
-type Goal = {
-  id: string;
-  title: string;
-  completed: boolean;
-  progress: number;
-  difficulty: number;
-  powder_reward: number;
-  due_date: string | null;
-  schedule_type: "none" | "daily" | "specific_days" | "final_day_only";
-  schedule_days: number[] | null;
-  daily_powder_reward: number;
-  total_days: number;
-  completed_days: number;
 };
 
 type DailyTask = {
@@ -64,7 +58,14 @@ function startOfTodayLocal(): Date {
 }
 
 function getRawDueField(g: any): any {
-  return g?.due_date ?? g?.due_at ?? g?.deadline ?? g?.end_date ?? g?.end_at ?? null;
+  return (
+    g?.due_date ??
+    g?.due_at ??
+    g?.deadline ??
+    g?.end_date ??
+    g?.end_at ??
+    null
+  );
 }
 
 function parseDueAsLocalDate(raw: any): Date | null {
@@ -90,7 +91,7 @@ const INITIAL_STATS: StatCardData[] = [
 ];
 
 export default function Home() {
-  const [session, setSession] = useState<Session | null>(null);
+  const { user, loading: authLoading } = useAuth();
   const [loadingDashboard, setLoadingDashboard] = useState<boolean>(true);
 
   const [userName, setUserName] = useState("모험가");
@@ -99,7 +100,7 @@ export default function Home() {
 
   const [todayTasks, setTodayTasks] = useState<DailyTask[]>([]);
   const [todayProgress, setTodayProgress] = useState<number>(0);
-  const [streakDays, setStreakDays] = useState<number>(0);
+  const [streakDays, setStreakDays] = useState<number>(0); // 아직 계산 로직은 없음
 
   const [petsTop3, setPetsTop3] = useState<PetPreview[]>([]);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
@@ -107,100 +108,105 @@ export default function Home() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session || null);
-      if (session) {
-        loadUserData(session.user.id);
-      } else {
-        setLoadingDashboard(false);
-      }
-    });
+    // AuthContext 초기 로딩 중이면 아무것도 하지 않음
+    if (authLoading) return;
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession || null);
-      if (nextSession) {
-        loadUserData(nextSession.user.id);
-      } else {
-        setStats(INITIAL_STATS);
-        setTodayTasks([]);
-        setTodayProgress(0);
-        setStreakDays(0);
-        setPetsTop3([]);
-        setRooms([]);
-        setLoadingDashboard(false);
-      }
-    });
+    if (!user) {
+      // 비로그인 상태
+      setUserName("모험가");
+      setStats(INITIAL_STATS);
+      setTodayTasks([]);
+      setTodayProgress(0);
+      setStreakDays(0);
+      setPetsTop3([]);
+      setRooms([]);
+      setLoadingDashboard(false);
+      return;
+    }
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+    // 로그인된 상태면 대시보드 데이터 로딩
+    loadUserData(user.id, user.displayName ?? "모험가");
+  }, [authLoading, user]);
 
-
-  async function loadUserData(userId: string) {
+  async function loadUserData(userId: string, displayName: string) {
     setLoadingDashboard(true);
     try {
       const todayStr = new Date().toISOString().split("T")[0];
 
-      const [profileRes, goalsRes, petsRes, tasksRes, completedCountRes] = await Promise.all([
-        supabase.from("profiles").select("display_name").eq("user_id", userId).maybeSingle(),
-        supabase.from("goals").select("*").eq("user_id", userId),
-        supabase.from("pets").select("*").eq("user_id", userId),
-        supabase.from("daily_tasks")
-          .select("id, goal_id, task_date, completed, failed")
-          .eq("user_id", userId)
-          .eq("task_date", todayStr),
-        supabase
-          .from("goals")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("completed", true),
+      // MySQL 백엔드에서 goals / pets 가져오기
+      const [goalsRes, petsRes] = await Promise.all([
+        goalsApi.list(),
+        petsApi.list(),
       ]);
-      setUserName(profileRes.data?.display_name || "모험가");
 
-      const allGoals: Goal[] = (goalsRes.data as Goal[]) || [];
-      const tasksRaw: DailyTask[] = (tasksRes.data as DailyTask[]) || [];
+      const allGoals: Goal[] = goalsRes || [];
 
-      const goalIds = Array.from(new Set(tasksRaw.map((t) => t.goal_id)));
-      let goalsForTasks: Goal[] = [];
-      if (goalIds.length) {
-        const { data: goalsForTasksData } = await supabase
-          .from("goals")
-          .select("*")
-          .in("id", goalIds);
-        goalsForTasks = (goalsForTasksData as Goal[]) || [];
-      }
-      const goalsById = new Map(goalsForTasks.map((g) => [g.id, g]));
+      setUserName(displayName || "모험가");
 
-      const tasksWithGoals: DailyTask[] = tasksRaw
-        .map((t) => ({ ...t, goal: goalsById.get(t.goal_id) }))
-        .filter((t) => t.goal && !isExpiredBeforeToday(t.goal));
+      // 만료되지 않은 목표만 필터링
+      const notExpiredGoals = allGoals.filter(
+        (g) => !isExpiredBeforeToday(g)
+      );
+
+      const activeGoalsCount = notExpiredGoals.filter(
+        (g) => !g.completed
+      ).length;
+      const completedGoalsCount = allGoals.filter(
+        (g) => g.completed
+      ).length;
+
+      // 간단히: 오늘의 할 일 = 오늘까지 유효하고 아직 완료 안 된 목표들
+      const tasksWithGoals: DailyTask[] = notExpiredGoals
+        .filter((g) => !g.completed)
+        .map((g) => ({
+          id: g.id,
+          goal_id: g.id,
+          task_date: todayStr,
+          completed: g.completed,
+          failed: false,
+          goal: g,
+        }));
+
       setTodayTasks(tasksWithGoals);
 
       const totalToday = tasksWithGoals.length;
       const completedToday = tasksWithGoals.filter((t) => t.completed).length;
-      const pct = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+      const pct =
+        totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
       setTodayProgress(pct);
 
-      const notExpiredGoals = allGoals.filter((g) => !isExpiredBeforeToday(g));
-      const activeGoalsCount = notExpiredGoals.filter((g) => !g.completed).length;
-
-      const completedGoalsFromArchive = typeof completedCountRes.count === "number" ? completedCountRes.count : 0;
-
       setStats([
-        { label: "달성한 목표", value: completedGoalsFromArchive, icon: Target, color: "text-success" },
-        { label: "나의 펫", value: petsRes.data?.length || 0, icon: Heart, color: "text-accent" },
-        { label: "도전 중", value: activeGoalsCount, icon: Zap, color: "text-warning" },
+        {
+          label: "달성한 목표",
+          value: completedGoalsCount,
+          icon: Target,
+          color: "text-success",
+        },
+        {
+          label: "나의 펫",
+          value: petsRes.length || 0,
+          icon: Heart,
+          color: "text-accent",
+        },
+        {
+          label: "도전 중",
+          value: activeGoalsCount,
+          icon: Zap,
+          color: "text-warning",
+        },
       ]);
 
-      const petList = petsRes.data || [];
+      const petList = petsRes || [];
       const mainPet = petList.find((p: any) => p.is_main);
       const othersSorted = petList
         .filter((p: any) => !p.is_main)
-        .sort((a: any, b: any) => (b.experience ?? 0) - (a.experience ?? 0));
-      const previewOrder = [...(mainPet ? [mainPet] : []), ...othersSorted.slice(0, 2)];
+        .sort(
+          (a: any, b: any) => (b.experience ?? 0) - (a.experience ?? 0)
+        );
+      const previewOrder = [
+        ...(mainPet ? [mainPet] : []),
+        ...othersSorted.slice(0, 2),
+      ];
       setPetsTop3(
         previewOrder.map((p: any) => ({
           id: p.id,
@@ -211,6 +217,7 @@ export default function Home() {
         }))
       );
 
+      // 아직 도전방 기능은 백엔드가 없으니 비워둠
       setRooms([]);
     } catch (err) {
       console.error("Failed to load dashboard:", err);
@@ -225,8 +232,13 @@ export default function Home() {
     }
   }
 
-  if (!session) return <GuestLanding stats={stats} />;
-  if (loadingDashboard) return <DashboardSkeleton />;
+  // Auth 로딩 또는 대시보드 로딩 중이면 스켈레톤
+  if (authLoading || loadingDashboard) return <DashboardSkeleton />;
+
+  // 로그인 안 된 상태
+  if (!user) return <GuestLanding stats={stats} />;
+
+  // 로그인 + 로딩 완료
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-6xl">
@@ -235,13 +247,22 @@ export default function Home() {
         <StatsRow stats={stats} />
 
         <div className="text-center">
-          <Button variant="hero" size="hero" className="group" onClick={() => navigate("/goals")}>
+          <Button
+            variant="hero"
+            size="hero"
+            className="group"
+            onClick={() => navigate("/goals")}
+          >
             <TrendingUp className="w-5 h-5 group-hover:animate-pulse" />
             <span className="ml-2 font-korean">새로운 목표 달성하기</span>
           </Button>
         </div>
         <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <TodayTasksCard tasks={todayTasks} progress={todayProgress} streakDays={streakDays} />
+          <TodayTasksCard
+            tasks={todayTasks}
+            progress={todayProgress}
+            streakDays={streakDays}
+          />
           <MyPetsPreview pets={petsTop3} />
         </div>
         <div className="mt-8">
@@ -268,7 +289,9 @@ function GuestLanding({ stats }: { stats: StatCardData[] }) {
           </div>
         </div>
 
-        <h1 className="font-pixel text-2xl sm:text-4xl mb-6 text-foreground">QuestPet</h1>
+        <h1 className="font-pixel text-2xl sm:text-4xl mb-6 text-foreground">
+          QuestPet
+        </h1>
 
         <p className="font-korean text-base sm:text-xl mb-8 text-muted-foreground leading-relaxed">
           오늘도 목표를 깨러 떠나볼까요?
@@ -277,10 +300,20 @@ function GuestLanding({ stats }: { stats: StatCardData[] }) {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button variant="hero" size="lg" onClick={() => navigate("/auth")} className="w-full sm:w-auto">
+          <Button
+            variant="hero"
+            size="lg"
+            onClick={() => navigate("/auth")}
+            className="w-full sm:w-auto"
+          >
             회원가입 하기
           </Button>
-          <Button variant="neon" size="lg" onClick={() => navigate("/auth")} className="w-full sm:w-auto">
+          <Button
+            variant="neon"
+            size="lg"
+            onClick={() => navigate("/auth")}
+            className="w-full sm:w-auto"
+          >
             로그인
           </Button>
         </div>
@@ -289,10 +322,15 @@ function GuestLanding({ stats }: { stats: StatCardData[] }) {
           {stats.map((stat) => {
             const Icon = stat.icon;
             return (
-              <Card key={stat.label} className="bg-card/50 border-2 border-border hover:border-primary transition-all cursor-default">
+              <Card
+                key={stat.label}
+                className="bg-card/50 border-2 border-border hover:border-primary transition-all cursor-default"
+              >
                 <CardContent className="p-6 text-center">
                   <Icon className={cn("w-8 h-8 mx-auto mb-2", stat.color)} />
-                  <div className="font-korean text-sm text-muted-foreground">{stat.label}</div>
+                  <div className="font-korean text-sm text-muted-foreground">
+                    {stat.label}
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -303,13 +341,25 @@ function GuestLanding({ stats }: { stats: StatCardData[] }) {
   );
 }
 
-function DashboardHeader({ userName, streakDays }: { userName: string; streakDays: number }) {
+function DashboardHeader({
+  userName,
+  streakDays,
+}: {
+  userName: string;
+  streakDays: number;
+}) {
   return (
     <div className="text-center mb-12 animate-slide-up">
-      <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">{userName}님, 환영합니다!</h1>
+      <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">
+        {userName}님, 환영합니다!
+      </h1>
       <p className="font-korean text-muted-foreground">
         오늘도 목표를 향해 달려봐요!
-        {streakDays > 0 && <span className="ml-2 text-primary font-medium">(연속 {streakDays}일째🔥)</span>}
+        {streakDays > 0 && (
+          <span className="ml-2 text-primary font-medium">
+            (연속 {streakDays}일째🔥)
+          </span>
+        )}
       </p>
     </div>
   );
@@ -353,8 +403,12 @@ function StatsRow({ stats }: { stats: StatCardData[] }) {
                   <Icon className={cn("w-8 h-8 text-primary-foreground")} />
                 </div>
               </div>
-              <div className="font-pixel text-4xl mb-2 text-foreground">{stat.value}</div>
-              <div className="font-korean text-sm text-muted-foreground">{stat.label}</div>
+              <div className="font-pixel text-4xl mb-2 text-foreground">
+                {stat.value}
+              </div>
+              <div className="font-korean text-sm text-muted-foreground">
+                {stat.label}
+              </div>
             </CardContent>
           </Card>
         );
@@ -380,12 +434,15 @@ function TodayTasksCard({
     return <Clock className="w-4 h-4 text-muted-foreground" />;
   };
 
-  const statusText = (t: DailyTask) => (t.completed ? "완료" : t.failed ? "실패" : "진행 중");
+  const statusText = (t: DailyTask) =>
+    t.completed ? "완료" : t.failed ? "실패" : "진행 중";
 
   return (
     <Card className="bg-card/50 border-2 border-border">
       <CardContent className="p-6">
-        <h3 className="font-pixel text-lg mb-4 text-foreground">오늘의 목표</h3>
+        <h3 className="font-pixel text-lg mb-4 text-foreground">
+          오늘의 목표
+        </h3>
         <div className="mb-4">
           <div className="flex items-center justify-between text-xs font-korean mb-2">
             <span className="text-muted-foreground">오늘 진행률</span>
@@ -393,11 +450,16 @@ function TodayTasksCard({
           </div>
 
           <div className="w-full h-2 bg-muted rounded-sm overflow-hidden border border-border">
-            <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${progress}%` }}
+            />
           </div>
 
           {streakDays > 0 && (
-            <div className="text-[11px] text-primary font-korean mt-2">연속 {streakDays}일 달성 중 🔥</div>
+            <div className="text-[11px] text-primary font-korean mt-2">
+              연속 {streakDays}일 달성 중 🔥
+            </div>
           )}
         </div>
         <div className="space-y-3">
@@ -422,10 +484,14 @@ function TodayTasksCard({
                     : "bg-muted/50 border-border hover:border-primary hover:bg-muted/70"
                 )}
               >
-                <div className="flex items-center justify-center">{statusIcon(t)}</div>
+                <div className="flex items-center justify-center">
+                  {statusIcon(t)}
+                </div>
                 <span className="font-korean text-sm text-foreground line-clamp-1">
                   {t.goal?.title ?? "(제목 없음)"}{" "}
-                  <span className="ml-2 text-xs text-muted-foreground">— {statusText(t)}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    — {statusText(t)}
+                  </span>
                 </span>
               </button>
             ))
@@ -456,7 +522,8 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
                 onClick={() => navigate("/pets")}
                 className={cn(
                   "relative aspect-square bg-gradient-primary rounded-lg flex flex-col items-center justify-center shadow-neon hover:shadow-neon-hover transition-all hover:scale-105 focus:outline-none",
-                  pet.is_main && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  pet.is_main &&
+                    "ring-2 ring-primary ring-offset-2 ring-offset-background"
                 )}
               >
                 <img
@@ -489,10 +556,14 @@ function ActiveRooms({ rooms }: { rooms: RoomSummary[] }) {
   return (
     <Card className="bg-card/50 border-2 border-border">
       <CardContent className="p-6">
-        <h3 className="font-pixel text-lg mb-4 text-foreground">진행 중인 도전방</h3>
+        <h3 className="font-pixel text-lg mb-4 text-foreground">
+          진행 중인 도전방
+        </h3>
 
         {rooms.length === 0 ? (
-          <div className="text-sm text-muted-foreground font-korean">아직 참여 중인 도전방이 없어요. 새 도전방을 만들어보세요!</div>
+          <div className="text-sm text-muted-foreground font-korean">
+            아직 참여 중인 도전방이 없어요. 새 도전방을 만들어보세요!
+          </div>
         ) : (
           <div className="space-y-3">
             {rooms.map((room) => (
@@ -502,10 +573,18 @@ function ActiveRooms({ rooms }: { rooms: RoomSummary[] }) {
                 onClick={() => navigate(`/rooms/${room.id}`)}
               >
                 <div>
-                  <div className="font-korean text-sm text-foreground">{room.title}</div>
-                  <div className="text-xs text-muted-foreground">D-{room.daysLeft} · {room.memberCount}명 참여 중</div>
+                  <div className="font-korean text-sm text-foreground">
+                    {room.title}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    D-{room.daysLeft} · {room.memberCount}명 참여 중
+                  </div>
                 </div>
-                <Button size="sm" variant="ghost" className="font-korean text-xs">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="font-korean text-xs"
+                >
                   입장
                 </Button>
               </div>
@@ -528,7 +607,10 @@ function DashboardSkeleton() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-card border-2 border-border rounded-lg p-8 text-center shadow-card">
+            <div
+              key={i}
+              className="bg-card border-2 border-border rounded-lg p-8 text-center shadow-card"
+            >
               <div className="flex justify-center mb-4">
                 <div className="w-16 h-16 bg-muted rounded-lg" />
               </div>
@@ -544,11 +626,17 @@ function DashboardSkeleton() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[0, 1].map((i) => (
-            <div key={i} className="bg-card/50 border-2 border-border rounded-lg p-6">
+            <div
+              key={i}
+              className="bg-card/50 border-2 border-border rounded-lg p-6"
+            >
               <div className="h-5 w-24 bg-muted rounded mb-4" />
               <div className="space-y-3">
                 {[0, 1, 2].map((j) => (
-                  <div key={j} className="h-10 bg-muted/60 rounded border border-border" />
+                  <div
+                    key={j}
+                    className="h-10 bg-muted/60 rounded border border-border"
+                  />
                 ))}
               </div>
             </div>
@@ -559,7 +647,10 @@ function DashboardSkeleton() {
           <div className="h-5 w-32 bg-muted rounded mb-4" />
           <div className="space-y-3">
             {[0, 1].map((j) => (
-              <div key={j} className="h-12 bg-muted/60 rounded border border-border" />
+              <div
+                key={j}
+                className="h-12 bg-muted/60 rounded border border-border"
+              />
             ))}
           </div>
         </div>

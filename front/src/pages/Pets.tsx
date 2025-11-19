@@ -1,18 +1,13 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent } from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Heart, Star, Sparkles, Zap, Edit2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress.tsx";
-import { supabase } from "@/integrations/supabase/client.ts";
-import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast.ts";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog.tsx";
+
 import PetRevealAnimation from "@/components/PetRevealAnimation.tsx";
 import { getRandomPetName } from "@/data/petNames.tsx";
 import { getExpProgress, getExpRequiredForNextLevel } from "@/utils/petLevel.ts";
@@ -21,14 +16,12 @@ import {
   UPGRADE_SUCCESS_RATES,
 } from "@/utils/upgradeSystem.ts";
 
-interface Pet {
-  id: string;
-  name: string;
-  level: number;
-  rarity: "common" | "rare" | "epic" | "legendary";
-  experience: number;
-  is_main: boolean;
-  stars: number;
+import { useAuth } from "@/contexts/AuthContext";
+import { petsApi, powderApi, type Pet as ApiPet, type PetRarity, } from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+// API에서 오는 Pet 타입을 확장 (last_main_change를 프론트에서 사용)
+interface Pet extends ApiPet {
   last_main_change: string | null;
 }
 
@@ -51,7 +44,6 @@ const attemptUpgrade = (stars: number): boolean => {
   return Math.random() < p;
 };
 
-
 export default function Pets() {
   const [pets, setPets] = useState<Pet[]>([]);
   const [powder, setPowder] = useState(0);
@@ -60,26 +52,19 @@ export default function Pets() {
   const [loading, setLoading] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
   const [revealPet, setRevealPet] = useState<{
-    name: string;
-    rarity: Pet["rarity"];
-  } | null>(null);
+  name: string;
+  rarity: PetRarity;
+} | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
 
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
+  // 로그인 안 되어 있으면 접근 제한
   useEffect(() => {
-    checkAuth();
-    loadPets();
-    loadPowder();
-  }, []);
-
-  const checkAuth = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
+    if (user === null) {
       toast({
         title: "로그인이 필요합니다",
         description: "로그인 후 이용해주세요.",
@@ -87,81 +72,79 @@ export default function Pets() {
       });
       navigate("/auth");
     }
-  };
+  }, [user, navigate, toast]);
+
+  // 펫/가루 데이터 로딩
+  useEffect(() => {
+    if (!user) return;
+
+    const init = async () => {
+      await Promise.all([loadPets(), loadPowder()]);
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const loadPets = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const { data } = await supabase
-      .from("pets")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: false });
-
-    if (data) {
+    try {
+      const data = await petsApi.list();
+      // last_main_change 컬럼이 없을 수도 있으니 안전하게 캐스팅
       setPets(data as Pet[]);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "오류 발생",
+        description: "펫 정보를 불러오지 못했습니다.",
+        variant: "destructive",
+      });
     }
   };
 
   const loadPowder = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const { data } = await supabase
-      .from("user_powder")
-      .select("amount")
-      .eq("user_id", session.user.id)
-      .single();
-
-    if (data) {
-      setPowder(data.amount);
+    try {
+      const res = await powderApi.get();
+      setPowder(res.amount);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "오류 발생",
+        description: "가루 정보를 불러오지 못했습니다.",
+        variant: "destructive",
+      });
     }
   };
 
   const canChangeMainPet = (lastChange: string | null): boolean => {
     if (!lastChange) return true;
-
     const now = new Date();
     const lastChangeDate = new Date(lastChange);
     const hoursSinceChange =
       (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
-
     return hoursSinceChange >= 24;
   };
 
   const getTimeUntilChange = (lastChange: string | null): string => {
     if (!lastChange) return "";
-
     const now = new Date();
     const lastChangeDate = new Date(lastChange);
     const hoursSinceChange =
       (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
     const hoursRemaining = Math.ceil(24 - hoursSinceChange);
-
     if (hoursRemaining <= 0) return "";
     return `${hoursRemaining}시간`;
   };
 
   const setMainPet = async (id: string) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!user) return;
 
-    const { data: currentMainPet } = await supabase
-      .from("pets")
-      .select("last_main_change")
-      .eq("user_id", session.user.id)
-      .eq("is_main", true)
-      .maybeSingle();
-
-    if (currentMainPet && !canChangeMainPet(currentMainPet.last_main_change)) {
-      const timeLeft = getTimeUntilChange(currentMainPet.last_main_change);
+    const currentMain = pets.find((p) => p.is_main);
+    if (
+      currentMain &&
+      !canChangeMainPet((currentMain as Pet).last_main_change ?? null)
+    ) {
+      const timeLeft = getTimeUntilChange(
+        (currentMain as Pet).last_main_change ?? null
+      );
       toast({
         title: "메인 펫을 변경할 수 없습니다",
         description: `${timeLeft} 후에 다시 시도해주세요.`,
@@ -170,39 +153,49 @@ export default function Pets() {
       return;
     }
 
-    await supabase.from("pets").update({ is_main: false }).eq("user_id", session.user.id);
+    try {
+      setLoading(true);
 
-    const { error } = await supabase
-      .from("pets")
-      .update({
-        is_main: true,
-        last_main_change: new Date().toISOString(),
-      })
-      .eq("id", id);
+      // 1) 기존 메인 펫 해제
+      if (currentMain) {
+        await petsApi.update(currentMain.id, {
+          is_main: false as any,
+        });
+      }
 
-    if (error) {
-      toast({
-        title: "오류 발생",
-        description: error.message,
-        variant: "destructive",
+      // 2) 새 메인 펫 설정
+      await petsApi.update(id, {
+        is_main: true as any,
+        // 백엔드에서 last_main_change 컬럼이 있다면 자동 반영
+        last_main_change: new Date().toISOString() as any,
       });
-    } else {
+
       toast({
         title: "메인 펫 설정 완료!",
         description: "24시간 후에 다시 변경할 수 있습니다.",
       });
-      loadPets();
+
+      await loadPets();
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        title: "오류 발생",
+        description: error.message ?? "메인 펫 설정 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getRarityByProbability = (): Pet["rarity"] => {
-    const rand = Math.random() * 100;
+  const getRarityByProbability = (): PetRarity => {
+  const rand = Math.random() * 100;
 
-    if (rand < 1) return "legendary";
-    if (rand < 10) return "epic";
-    if (rand < 32) return "rare";
-    return "common";
-  };
+  if (rand < 1) return "legendary";
+  if (rand < 10) return "epic";
+  if (rand < 32) return "rare";
+  return "common";
+};
 
   const createPet = async () => {
     const cost = 500;
@@ -214,40 +207,42 @@ export default function Pets() {
       });
       return;
     }
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!user) {
+      toast({
+        title: "로그인이 필요합니다",
+        description: "로그인 후 이용해주세요.",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
 
     setLoading(true);
 
     const rarity = getRarityByProbability();
     const name = getRandomPetName();
 
-    const { error: petError } = await supabase.from("pets").insert({
-      user_id: session.user.id,
-      name,
-      rarity,
-    });
+    try {
+      // 1) 펫 생성
+      await petsApi.create({ name, rarity });
 
-    if (petError) {
-      toast({
-        title: "오류 발생",
-        description: petError.message,
-        variant: "destructive",
-      });
-      setLoading(false);
-    } else {
-      await supabase
-        .from("user_powder")
-        .update({ amount: powder - cost })
-        .eq("user_id", session.user.id);
+      // 2) 가루 차감 (delta = -cost)
+      const res = await powderApi.update(-cost);
+      setPowder(res.amount);
 
+      // 3) 연출
       setRevealPet({ name, rarity });
       setShowReveal(true);
 
-      loadPowder();
+      await loadPets();
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        title: "오류 발생",
+        description: error.message ?? "펫 생성 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
       setLoading(false);
     }
   };
@@ -255,108 +250,88 @@ export default function Pets() {
   const handleRevealComplete = () => {
     setShowReveal(false);
     setRevealPet(null);
-    loadPets();
   };
 
   const updatePetName = async () => {
     if (!editingPet || !editName.trim()) return;
 
-    const { error } = await supabase
-      .from("pets")
-      .update({ name: editName })
-      .eq("id", editingPet.id);
-
-    if (error) {
-      toast({
-        title: "오류 발생",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "이름 변경 완료!",
-      });
+    try {
+      await petsApi.update(editingPet.id, { name: editName });
+      toast({ title: "이름 변경 완료!" });
       setEditingPet(null);
       setEditName("");
-      loadPets();
+      await loadPets();
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        title: "오류 발생",
+        description: error.message ?? "이름 변경 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
     }
   };
 
-const upgradePet = async () => {
-  if (!selectedPet) return;
+  const upgradePet = async () => {
+    if (!selectedPet) return;
+    if (!user) return;
 
-  const cost = getUpgradeCost(selectedPet.stars);
+    const cost = getUpgradeCost(selectedPet.stars);
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return;
-
-  if (powder < cost) {
-    toast({
-      title: "가루가 부족합니다",
-      description: `${cost} 가루가 필요합니다.`,
-      variant: "destructive",
-    });
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    // 1) 가루 차감
-    await supabase
-      .from("user_powder")
-      .update({ amount: powder - cost })
-      .eq("user_id", session.user.id);
-
-    setPowder((prev) => prev - cost);
-
-    // 2) 성공/실패 판정
-    const success = attemptUpgrade(selectedPet.stars);
-
-    // 3) 로그 기록 (타입 꼬임 방지를 위해 any 캐스팅)
-    await (supabase.from("upgrade_logs") as any).insert({
-      pet_id: selectedPet.id,
-      user_id: session.user.id,
-      current_stars: selectedPet.stars,
-      success,
-    } as any);
-
-    // 4) 결과 토스트 + 실제 별 수치 반영
-    if (success) {
-      await supabase
-        .from("pets")
-        .update({ stars: selectedPet.stars + 1 })
-        .eq("id", selectedPet.id);
-
+    if (powder < cost) {
       toast({
-        title: "강화 성공!",
-        description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
-      });
-    } else {
-      toast({
-        title: "강화 실패",
-        description: "아쉽게도 실패했습니다.",
+        title: "가루가 부족합니다",
+        description: `${cost} 가루가 필요합니다.`,
         variant: "destructive",
       });
+      return;
     }
 
-    setSelectedPet(null);
-    await loadPets();
-    await loadPowder();
-  } catch (error) {
-    console.error("Upgrade error:", error);
-    toast({
-      title: "오류 발생",
-      description: "강화 중 오류가 발생했습니다.",
-      variant: "destructive",
-    });
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      setLoading(true);
 
+      // 1) 가루 차감
+      const res = await powderApi.update(-cost);
+      setPowder(res.amount);
+
+      // 2) 성공/실패 판정
+      const success = attemptUpgrade(selectedPet.stars);
+
+      // TODO: 나중에 upgrade_logs를 위한 백엔드 API를 만들면 여기서 호출
+
+      // 3) 결과 반영
+      if (success) {
+        await petsApi.update(selectedPet.id, {
+          stars: selectedPet.stars + 1,
+        } as any);
+
+        toast({
+          title: "강화 성공!",
+          description: `${selectedPet.name}이(가) ★${
+            selectedPet.stars + 1
+          }로 강화되었습니다!`,
+        });
+      } else {
+        toast({
+          title: "강화 실패",
+          description: "아쉽게도 실패했습니다.",
+          variant: "destructive",
+        });
+      }
+
+      setSelectedPet(null);
+      await loadPets();
+      await loadPowder();
+    } catch (error) {
+      console.error("Upgrade error:", error);
+      toast({
+        title: "오류 발생",
+        description: "강화 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen px-4 py-8">
@@ -498,19 +473,26 @@ const upgradePet = async () => {
                       className="flex-1"
                       disabled={pets.some(
                         (p) =>
-                          p.is_main && !canChangeMainPet(p.last_main_change)
+                          p.is_main &&
+                          !canChangeMainPet(
+                            (p as Pet).last_main_change ?? null
+                          )
                       )}
                     >
                       메인 설정
                     </Button>
                   )}
-                  {pet.is_main && !canChangeMainPet(pet.last_main_change) && (
-                    <div className="flex-1 text-center py-2">
-                      <p className="font-korean text-xs text-muted-foreground">
-                        {getTimeUntilChange(pet.last_main_change)} 후 변경 가능
-                      </p>
-                    </div>
-                  )}
+                  {pet.is_main &&
+                    !canChangeMainPet((pet as Pet).last_main_change ?? null) && (
+                      <div className="flex-1 text-center py-2">
+                        <p className="font-korean text-xs text-muted-foreground">
+                          {getTimeUntilChange(
+                            (pet as Pet).last_main_change ?? null
+                          )}{" "}
+                          후 변경 가능
+                        </p>
+                      </div>
+                    )}
                   <Button
                     variant="outline"
                     size="sm"
