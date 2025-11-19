@@ -12,16 +12,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog.tsx";
 import PetRevealAnimation from "@/components/PetRevealAnimation.tsx";
-import UpgradeAnimation from "@/components/UpgradeAnimation.tsx";
 import { getRandomPetName } from "@/data/petNames.tsx";
 import { getExpProgress, getExpRequiredForNextLevel } from "@/utils/petLevel.ts";
-import { 
-  attemptUpgrade, 
+import {
   getUpgradeCost,
-  UPGRADE_SUCCESS_RATES 
+  UPGRADE_SUCCESS_RATES,
 } from "@/utils/upgradeSystem.ts";
 
 interface Pet {
@@ -49,6 +46,12 @@ const rarityBg = {
   legendary: "from-warning/20 to-warning/5",
 };
 
+const attemptUpgrade = (stars: number): boolean => {
+  const p = Math.max(0.1, 0.7 - stars * 0.1);
+  return Math.random() < p;
+};
+
+
 export default function Pets() {
   const [pets, setPets] = useState<Pet[]>([]);
   const [powder, setPowder] = useState(0);
@@ -56,14 +59,15 @@ export default function Pets() {
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [loading, setLoading] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
-  const [revealPet, setRevealPet] = useState<{ name: string; rarity: Pet["rarity"] } | null>(null);
+  const [revealPet, setRevealPet] = useState<{
+    name: string;
+    rarity: Pet["rarity"];
+  } | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
-  const [showUpgradeAnimation, setShowUpgradeAnimation] = useState(false);
-  const [upgradeAnimationData, setUpgradeAnimationData] = useState<{ success: boolean; } | null>(null);
+
   const navigate = useNavigate();
   const { toast } = useToast();
-
 
   useEffect(() => {
     checkAuth();
@@ -121,22 +125,24 @@ export default function Pets() {
 
   const canChangeMainPet = (lastChange: string | null): boolean => {
     if (!lastChange) return true;
-    
+
     const now = new Date();
     const lastChangeDate = new Date(lastChange);
-    const hoursSinceChange = (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
-    
+    const hoursSinceChange =
+      (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
+
     return hoursSinceChange >= 24;
   };
 
   const getTimeUntilChange = (lastChange: string | null): string => {
     if (!lastChange) return "";
-    
+
     const now = new Date();
     const lastChangeDate = new Date(lastChange);
-    const hoursSinceChange = (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
+    const hoursSinceChange =
+      (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
     const hoursRemaining = Math.ceil(24 - hoursSinceChange);
-    
+
     if (hoursRemaining <= 0) return "";
     return `${hoursRemaining}시간`;
   };
@@ -147,7 +153,6 @@ export default function Pets() {
     } = await supabase.auth.getSession();
     if (!session) return;
 
-    // Get current main pet to check last_main_change
     const { data: currentMainPet } = await supabase
       .from("pets")
       .select("last_main_change")
@@ -155,7 +160,6 @@ export default function Pets() {
       .eq("is_main", true)
       .maybeSingle();
 
-    // Check if 24 hours have passed
     if (currentMainPet && !canChangeMainPet(currentMainPet.last_main_change)) {
       const timeLeft = getTimeUntilChange(currentMainPet.last_main_change);
       toast({
@@ -166,18 +170,13 @@ export default function Pets() {
       return;
     }
 
-    // Set all pets to not main
-    await supabase
-      .from("pets")
-      .update({ is_main: false })
-      .eq("user_id", session.user.id);
+    await supabase.from("pets").update({ is_main: false }).eq("user_id", session.user.id);
 
-    // Set selected pet as main with current timestamp
     const { error } = await supabase
       .from("pets")
-      .update({ 
+      .update({
         is_main: true,
-        last_main_change: new Date().toISOString()
+        last_main_change: new Date().toISOString(),
       })
       .eq("id", id);
 
@@ -198,11 +197,11 @@ export default function Pets() {
 
   const getRarityByProbability = (): Pet["rarity"] => {
     const rand = Math.random() * 100;
-    
-    if (rand < 1) return "legendary"; // 1%
-    if (rand < 10) return "epic"; // 9%
-    if (rand < 32) return "rare"; // 22%
-    return "common"; // 68%
+
+    if (rand < 1) return "legendary";
+    if (rand < 10) return "epic";
+    if (rand < 32) return "rare";
+    return "common";
   };
 
   const createPet = async () => {
@@ -223,14 +222,13 @@ export default function Pets() {
 
     setLoading(true);
 
-    // Generate random rarity and name
     const rarity = getRarityByProbability();
     const name = getRandomPetName();
 
     const { error: petError } = await supabase.from("pets").insert({
       user_id: session.user.id,
-      name: name,
-      rarity: rarity,
+      name,
+      rarity,
     });
 
     if (petError) {
@@ -246,14 +244,12 @@ export default function Pets() {
         .update({ amount: powder - cost })
         .eq("user_id", session.user.id);
 
-      // Show reveal animation
       setRevealPet({ name, rarity });
       setShowReveal(true);
-      
-      loadPowder();
-    }
 
-    setLoading(false);
+      loadPowder();
+      setLoading(false);
+    }
   };
 
   const handleRevealComplete = () => {
@@ -286,73 +282,69 @@ export default function Pets() {
     }
   };
 
-  const upgradePet = async () => {
-    if (!selectedPet) return;
+const upgradePet = async () => {
+  if (!selectedPet) return;
 
-    const cost = getUpgradeCost(selectedPet.stars);
-    
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
+  const cost = getUpgradeCost(selectedPet.stars);
 
-    setLoading(true);
-// (선택) 성공 확률 함수가 객체를 반환했다면 boolean 반환으로 바꿔줘.
-function attemptUpgrade(stars: number): boolean {
-  const p = Math.max(0.1, 0.7 - stars * 0.1); // 예: 별 높을수록 확률↓
-  return Math.random() < p;
-}
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return;
 
-const handleUpgrade = async () => {
+  if (powder < cost) {
+    toast({
+      title: "가루가 부족합니다",
+      description: `${cost} 가루가 필요합니다.`,
+      variant: "destructive",
+    });
+    return;
+  }
+
   try {
     setLoading(true);
 
-    // 비용 차감 (성공/실패와 무관하게 소모)
+    // 1) 가루 차감
     await supabase
       .from("user_powder")
       .update({ amount: powder - cost })
       .eq("user_id", session.user.id);
 
-    // 확률 강화
+    setPowder((prev) => prev - cost);
+
+    // 2) 성공/실패 판정
     const success = attemptUpgrade(selectedPet.stars);
 
-    // 로그 기록 (파편 필드 제거)
-    await supabase.from("upgrade_logs").insert({
+    // 3) 로그 기록 (타입 꼬임 방지를 위해 any 캐스팅)
+    await (supabase.from("upgrade_logs") as any).insert({
       pet_id: selectedPet.id,
       user_id: session.user.id,
       current_stars: selectedPet.stars,
       success,
-    });
+    } as any);
 
-    // 애니메이션 표시 (파편 데이터 제거)
-    setUpgradeAnimationData({ success });
-    setShowUpgradeAnimation(true);
-    setOpenUpgrade(false);
+    // 4) 결과 토스트 + 실제 별 수치 반영
+    if (success) {
+      await supabase
+        .from("pets")
+        .update({ stars: selectedPet.stars + 1 })
+        .eq("id", selectedPet.id);
 
-    // 애니메이션 후 결과 반영
-    setTimeout(async () => {
-      if (success) {
-        await supabase
-          .from("pets")
-          .update({ stars: selectedPet.stars + 1 })
-          .eq("id", selectedPet.id);
+      toast({
+        title: "강화 성공!",
+        description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
+      });
+    } else {
+      toast({
+        title: "강화 실패",
+        description: "아쉽게도 실패했습니다.",
+        variant: "destructive",
+      });
+    }
 
-        toast({
-          title: "강화 성공!",
-          description: `${selectedPet.name}이(가) ★${selectedPet.stars + 1}로 강화되었습니다!`,
-        });
-      } else {
-        toast({
-          title: "강화 실패",
-          description: "아쉽게도 실패했습니다.",
-          variant: "destructive",
-        });
-      }
-
-      setSelectedPet(null);
-      // setUseGuaranteedUpgrade(false);  // ← 보장강화 제거로 더 이상 필요 없음
-      await Promise.all([loadPets(), loadPowder()]);
-    }, 2500);
+    setSelectedPet(null);
+    await loadPets();
+    await loadPowder();
   } catch (error) {
     console.error("Upgrade error:", error);
     toast({
@@ -364,27 +356,33 @@ const handleUpgrade = async () => {
     setLoading(false);
   }
 };
-}
 
-return (
-  <div className="min-h-screen px-4 py-8">
-    <div className="container mx-auto max-w-6xl">
-      <div className="mb-8 animate-slide-up">
-        <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">나의 펫</h1>
 
-        <Card className="bg-gradient-primary border-2 border-primary shadow-neon mb-6">
-          <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-warning rounded-lg flex items-center justify-center animate-pulse-glow">
-                <Sparkles className="w-8 h-8 text-warning-foreground" />
+  return (
+    <div className="min-h-screen px-4 py-8">
+      <div className="container mx-auto max-w-6xl">
+        <div className="mb-8 animate-slide-up">
+          <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">
+            나의 펫
+          </h1>
+
+          <Card className="bg-gradient-primary border-2 border-primary shadow-neon mb-6">
+            <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-warning rounded-lg flex items-center justify-center animate-pulse-glow">
+                  <Sparkles className="w-8 h-8 text-warning-foreground" />
+                </div>
+                <div>
+                  <div className="font-korean text-sm text-primary-foreground/80">
+                    보유 가루
+                  </div>
+                  <div className="font-pixel text-2xl text-primary-foreground">
+                    {powder}
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="font-korean text-sm text-primary-foreground/80">보유 가루</div>
-                <div className="font-pixel text-2xl text-primary-foreground">{powder}</div>
-              </div>
-            </div>
-              <Button 
-                variant="hero" 
+              <Button
+                variant="hero"
                 size="lg"
                 onClick={createPet}
                 disabled={loading}
@@ -397,7 +395,9 @@ return (
 
           <div className="flex items-center justify-between mb-4">
             <div className="font-korean text-muted-foreground">
-              총 <span className="text-foreground font-bold">{pets.length}</span>마리의 펫을 보유하고 있습니다
+              총{" "}
+              <span className="text-foreground font-bold">{pets.length}</span>
+              마리의 펫을 보유하고 있습니다
             </div>
           </div>
         </div>
@@ -409,23 +409,34 @@ return (
               className={cn(
                 "relative overflow-hidden border-2 transition-all shadow-card hover:shadow-neon animate-slide-up",
                 rarityColors[pet.rarity],
-                pet.is_main && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                pet.is_main &&
+                  "ring-2 ring-primary ring-offset-2 ring-offset-background"
               )}
               style={{ animationDelay: `${index * 100}ms` }}
             >
               {pet.is_main && (
                 <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-primary rounded-sm">
-                  <span className="font-pixel text-xs text-primary-foreground">MAIN</span>
+                  <span className="font-pixel text-xs text-primary-foreground">
+                    MAIN
+                  </span>
                 </div>
               )}
 
               <div className="absolute top-2 right-2 z-10 flex gap-0.5">
                 {Array.from({ length: pet.stars }).map((_, i) => (
-                  <Star key={i} className="w-4 h-4 text-warning fill-warning animate-pulse-glow" />
+                  <Star
+                    key={i}
+                    className="w-4 h-4 text-warning fill-warning animate-pulse-glow"
+                  />
                 ))}
               </div>
 
-              <div className={cn("h-48 bg-gradient-to-br flex items-center justify-center", rarityBg[pet.rarity])}>
+              <div
+                className={cn(
+                  "h-48 bg-gradient-to-br flex items-center justify-center",
+                  rarityBg[pet.rarity]
+                )}
+              >
                 <div className="relative">
                   <div className="w-32 h-32 bg-gradient-primary rounded-full flex items-center justify-center shadow-neon animate-float">
                     <Heart className="w-16 h-16 text-primary-foreground" />
@@ -439,7 +450,9 @@ return (
               <CardContent className="p-4 space-y-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-korean text-lg font-bold">{pet.name}</h3>
+                    <h3 className="font-korean text-lg font-bold">
+                      {pet.name}
+                    </h3>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -452,7 +465,12 @@ return (
                       <Edit2 className="w-3 h-3" />
                     </Button>
                   </div>
-                  <div className={cn("font-korean text-xs capitalize", rarityColors[pet.rarity])}>
+                  <div
+                    className={cn(
+                      "font-korean text-xs capitalize",
+                      rarityColors[pet.rarity]
+                    )}
+                  >
                     {pet.rarity}
                   </div>
                 </div>
@@ -461,12 +479,13 @@ return (
                   <div className="flex justify-between text-xs font-korean text-muted-foreground">
                     <span>경험치</span>
                     <span>
-                      {pet.experience} / {getExpRequiredForNextLevel(pet.level) || "MAX"}
+                      {pet.experience} /{" "}
+                      {getExpRequiredForNextLevel(pet.level) || "MAX"}
                     </span>
                   </div>
-                  <Progress 
-                    value={getExpProgress(pet.experience, pet.level)} 
-                    className="h-2" 
+                  <Progress
+                    value={getExpProgress(pet.experience, pet.level)}
+                    className="h-2"
                   />
                 </div>
 
@@ -477,7 +496,10 @@ return (
                       size="sm"
                       onClick={() => setMainPet(pet.id)}
                       className="flex-1"
-                      disabled={pets.some(p => p.is_main && !canChangeMainPet(p.last_main_change))}
+                      disabled={pets.some(
+                        (p) =>
+                          p.is_main && !canChangeMainPet(p.last_main_change)
+                      )}
                     >
                       메인 설정
                     </Button>
@@ -513,23 +535,32 @@ return (
               <div className="inline-flex w-20 h-20 bg-gradient-secondary rounded-lg items-center justify-center shadow-neon animate-float">
                 <Sparkles className="w-10 h-10 text-secondary-foreground" />
               </div>
-              <h3 className="font-pixel text-xl text-foreground">펫 강화 시스템</h3>
+              <h3 className="font-pixel text-xl text-foreground">
+                펫 강화 시스템
+              </h3>
               <p className="font-korean text-sm text-muted-foreground max-w-md mx-auto">
-                가루를 사용해 펫을 강화하세요!<br />
+                가루를 사용해 펫을 강화하세요!
+                <br />
                 강화할수록 더 많은 가루가 필요합니다.
               </p>
               <div className="flex flex-wrap gap-4 justify-center pt-4">
                 <div className="text-center">
                   <div className="font-pixel text-2xl text-warning">★</div>
-                  <div className="font-korean text-xs text-muted-foreground">100 가루</div>
+                  <div className="font-korean text-xs text-muted-foreground">
+                    100 가루
+                  </div>
                 </div>
                 <div className="text-center">
                   <div className="font-pixel text-2xl text-warning">★★</div>
-                  <div className="font-korean text-xs text-muted-foreground">200 가루</div>
+                  <div className="font-korean text-xs text-muted-foreground">
+                    200 가루
+                  </div>
                 </div>
                 <div className="text-center">
                   <div className="font-pixel text-2xl text-warning">★★★</div>
-                  <div className="font-korean text-xs text-muted-foreground">300 가루</div>
+                  <div className="font-korean text-xs text-muted-foreground">
+                    300 가루
+                  </div>
                 </div>
               </div>
             </div>
@@ -544,43 +575,62 @@ return (
             {selectedPet && (
               <div className="space-y-4">
                 <div className="text-center">
-                  <h3 className="font-korean text-lg font-bold mb-2">{selectedPet.name}</h3>
+                  <h3 className="font-korean text-lg font-bold mb-2">
+                    {selectedPet.name}
+                  </h3>
                   <div className="flex justify-center gap-1 mb-4">
                     {Array.from({ length: selectedPet.stars }).map((_, i) => (
-                      <Star key={i} className="w-5 h-5 text-warning fill-warning" />
+                      <Star
+                        key={i}
+                        className="w-5 h-5 text-warning fill-warning"
+                      />
                     ))}
                   </div>
                 </div>
-                
+
                 <div className="p-4 bg-muted rounded-sm space-y-2">
                   <p className="font-korean text-sm text-muted-foreground">
                     현재 강화 단계: {selectedPet.stars}★
                   </p>
                   <p className="font-korean text-sm text-foreground font-bold">
-                    강화 성공 확률: {UPGRADE_SUCCESS_RATES[selectedPet.stars] || 0}%
+                    강화 성공 확률:{" "}
+                    {UPGRADE_SUCCESS_RATES[selectedPet.stars] || 0}%
                   </p>
                   <p className="font-korean text-sm text-muted-foreground">
                     실패 시: 별 조각 +1
                   </p>
                 </div>
 
-                {/* Normal Upgrade */}
                 <div className="p-4 bg-card/50 rounded-sm border-2 border-border space-y-2">
-                  <h4 className="font-pixel text-sm text-foreground">일반 강화</h4>
+                  <h4 className="font-pixel text-sm text-foreground">
+                    일반 강화
+                  </h4>
                   <p className="font-korean text-sm text-muted-foreground">
                     비용: {getUpgradeCost(selectedPet.stars)} 가루
                   </p>
                   <p className="font-korean text-sm text-muted-foreground">
                     보유: {powder} 가루
                   </p>
+                  <Button
+                    onClick={upgradePet}
+                    variant="default"
+                    className="w-full"
+                    disabled={
+                      loading || powder < getUpgradeCost(selectedPet.stars)
+                    }
+                  >
                     {loading ? "강화 중..." : "일반 강화"}
+                  </Button>
                 </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
 
-        <Dialog open={editingPet !== null} onOpenChange={(open) => !open && setEditingPet(null)}>
+        <Dialog
+          open={editingPet !== null}
+          onOpenChange={(open) => !open && setEditingPet(null)}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="font-pixel">펫 이름 변경</DialogTitle>
@@ -591,11 +641,7 @@ return (
                 onChange={(e) => setEditName(e.target.value)}
                 placeholder="새로운 이름을 입력하세요"
               />
-              <Button
-                onClick={updatePetName}
-                variant="hero"
-                className="w-full"
-              >
+              <Button onClick={updatePetName} variant="hero" className="w-full">
                 이름 변경
               </Button>
             </div>
@@ -616,4 +662,4 @@ return (
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(" ");
-  }
+}
