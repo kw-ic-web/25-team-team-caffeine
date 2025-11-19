@@ -12,6 +12,29 @@
 └─ infra/
    └─ supabase/   # DB, 마이그레이션 관리
 
+## 백엔드 마이그레이션 계획
+
+1. **Express 기반 API 게이트웨이 정비**
+   - `back/src/app.ts`에서 공통 미들웨어(CORS, JSON, 로깅)를 구성하고 모든 라우터를 등록합니다.
+   - 라우터는 `back/src/routes`에, 도메인별 비즈니스 로직은 `back/src/controllers`에 배치합니다.
+
+2. **도메인별 엔드포인트 이관**
+   - `Supabase`에 직접 접근하던 로직(회원가입/로그인, 채팅, 목표, 펫 관리 등)을 Express 라우터 → 컨트롤러 → MySQL 계층 형태로 옮깁니다.
+   - 각 컨트롤러는 향후 서비스/DAO 계층을 통해 MySQL과 통신하도록 확장합니다.
+
+3. **MySQL 연동**
+   - 마이그레이션 도구(예: Prisma Migrate) 또는 기존 `infra/supabase` SQL 스크립트를 참고해 MySQL 스키마를 구성합니다.
+
+4. **실시간/시그널링 기능 재구현**
+   - 채팅/WebRTC 시그널링은 Supabase Realtime 대신 Express 서버에 붙은 WebSocket/Socket.IO로 대체합니다.
+   - 인증된 소켓 연결을 위해 JWT 또는 세션을 공유하도록 설계합니다.
+
+## 패키지 업데이트 공유 방법
+
+- `package.json` / `package-lock.json`이 변경되면 팀원들도 로컬에서 다시 `npm install`을 실행해야 합니다.
+- 루트에서 `npm install`을 실행하면 `front` / `back` 모두 자동 설치됩니다. 별도로 백엔드만 설치하고 싶다면 `cd back && npm install`을 사용하세요.
+- 새로 추가된 모듈(`pino-http` 등)을 설치하지 않으면 TypeScript가 모듈/타입을 찾지 못해 에러가 발생합니다. PR 설명이나 커밋 메시지에 “npm install 필요”를 함께 적어 두면 좋습니다.
+
 1. 클론
 git clone <레포지토리_URL>
 cd 25-team-team-caffeine
