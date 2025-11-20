@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from "lucide-react";
-
+import { loadGoogleIdentity } from "@/integrations/google/gis";
+import { getGoogleUserInfo } from "@/integrations/google/gis";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,7 +18,8 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
- const { login, register } = useAuth();
+  const { toast } = useToast();              // ✅ 추가
+  const { login, register, loginWithGoogle } = useAuth();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,10 +32,12 @@ export default function Auth() {
         navigate("/");
       } else {
         await register(email, password, displayName || "모험가");
-        toast({ title: "회원가입 성공!", description: "자동으로 로그인되었습니다." });
+        toast({
+          title: "회원가입 성공!",
+          description: "자동으로 로그인되었습니다.",
+        });
         navigate("/");
       }
-
     } catch (error: any) {
       toast({
         title: "오류 발생",
@@ -45,17 +49,37 @@ export default function Auth() {
     }
   };
 
+  // ✅ 새로 구현한 Google 로그인 버튼용 핸들러
+  const handleGoogleLogin = async () => {
+    try {
+      setLoading(true);
 
-// +  TODO: 백엔드에 Google OAuth 구현 후 연결
-// + const handleGoogleLogin = async () => {
-// +   toast({
-// +     title: "준비 중 기능",
-// +     description: "Google 로그인은 아직 구현되지 않았습니다.",
-// +   });
-// + };
+      // 1) Google에서 이메일/이름/고유 ID 받아오기
+      const profile = await getGoogleUserInfo();
 
+      // 2) 백엔드로 보내서 회원 생성/로그인
+      await loginWithGoogle({
+        email: profile.email,
+        displayName: profile.name,
+        googleId: profile.sub,
+      });
 
-
+      toast({
+        title: "로그인 성공!",
+        description: "Google 계정으로 로그인되었습니다.",
+      });
+      navigate("/");
+    } catch (error: any) {
+      console.error("[Google Login] error:", error);
+      toast({
+        title: "Google 로그인 실패",
+        description: error?.message ?? "알 수 없는 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -88,10 +112,9 @@ export default function Auth() {
                   </Label>
                   <Input
                     id="displayName"
-                    type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="모험가"
+                    placeholder="모험가의 이름을 지어주세요"
                     className="mt-1"
                   />
                 </div>
@@ -142,10 +165,11 @@ export default function Auth() {
                   : "회원가입"}
               </Button>
             </form>
+
             <div className="mt-4">
               <Button
                 type="button"
-                onClick={handleGoogleLogin}
+                onClick={handleGoogleLogin}        // ✅ 이제 정의된 함수
                 variant="outline"
                 className="w-full flex items-center gap-2"
               >
@@ -153,7 +177,6 @@ export default function Auth() {
                 Google 계정으로 시작하기
               </Button>
             </div>
-
 
             <div className="mt-4 text-center">
               <button

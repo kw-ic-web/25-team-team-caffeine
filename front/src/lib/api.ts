@@ -95,12 +95,26 @@ export const authApi = {
       body: JSON.stringify({ email, password, displayName }),
     });
   },
+
   login(email: string, password: string) {
     return request<AuthResponse>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
   },
+
+  // ✅ Google OAuth용 – 이메일/이름/Google ID 받아서 로그인
+  googleLogin(profile: {
+    email: string;
+    displayName?: string;
+    googleId: string;
+  }) {
+    return request<AuthResponse>("/api/auth/google/callback", {
+      method: "POST",
+      body: JSON.stringify(profile),
+    });
+  },
+
   me() {
     return request<User>("/api/users/me", {}, true);
   },

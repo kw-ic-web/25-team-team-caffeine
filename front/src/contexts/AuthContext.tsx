@@ -18,6 +18,11 @@ interface AuthContextValue {
     password: string,
     displayName?: string
   ) => Promise<void>;
+  loginWithGoogle: (profile: {
+    email: string;
+    displayName?: string;
+    googleId: string;
+  }) => Promise<void>;             // ✅ 추가
   logout: () => void;
 }
 
@@ -53,6 +58,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   };
 
+  const loginWithGoogle = async (profile: {
+    email: string;
+    displayName?: string;
+    googleId: string;
+  }) => {
+    const res = await authApi.googleLogin(profile);
+    setToken(res.token);
+    setUser(res.user);
+  };
+  
   const register = async (
     email: string,
     password: string,
@@ -70,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout }}
+      value={{ user, loading, login, register, loginWithGoogle, logout }}
     >
       {children}
     </AuthContext.Provider>
