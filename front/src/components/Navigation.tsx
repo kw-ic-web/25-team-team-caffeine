@@ -13,7 +13,6 @@ const navItems = [
   { path: "/calendar", icon: Calendar, label: "캘린더" },
   { path: "/pets", icon: Heart, label: "펫" },
   { path: "/community", icon: Users, label: "커뮤니티" },
-  { path: "/ranking", icon: Trophy, label: "랭킹" },
 ];
 
 export default function Navigation() {
