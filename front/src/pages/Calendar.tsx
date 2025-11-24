@@ -53,7 +53,7 @@ export default function Calendar() {
     setGLoading(true);
     const token = await getValidAccessToken();
 
-    // 과거 30일 ~ 미래 60일 구간으로 넉넉하게
+    // 과거 30일 ~ 미래 60일 구간
     const now = new Date();
     const timeMin = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const timeMax = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
@@ -83,6 +83,41 @@ export default function Calendar() {
     setGLoading(false);
   }
 }
+
+ function GoogleCalendarSection({
+  title = "Google Calendar",
+  events,
+}:{
+  title?: string;
+  events: CalendarEvent[];
+}){
+  return (
+    <section className="mt-4">
+      <h2 className="text-xl font-bold mb-2">{title}</h2>
+
+      {events.length === 0 ? (
+        <p>불러온 일정이 없습니다.</p>
+      ) : (
+        <div className="space-y-2">
+          {events.map((event) => (
+            <div
+              key={event.id}
+              className="border rounded-lg p-3 text-sm flex flex-col gap-1"
+            >
+              <div className="font-semibold">{event.title}</div>
+              <div className="text-xs opacity-70">
+                {event.start_date} ~ {event.end_date}
+              </div>
+              {event.description && (
+                <div className="text-xs">{event.description}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+} 
 
 
   async function debugListCalendars() {
@@ -334,28 +369,90 @@ export default function Calendar() {
                   ? `${date.getMonth() + 1}월 ${date.getDate()}일의 일정`
                   : "날짜를 선택하세요"}
               </h3>
+
               <div className="space-y-3">
-                {selectedDateEvents.length === 0 ? (
+                {/* 로컬 + 구글 일정이 모두 비어있을 때만 문구 출력 */}
+                {selectedDateEvents.length === 0 && selectedGoogleEvents.length === 0 ? (
                   <p className="font-korean text-sm text-muted-foreground">
                     이날은 일정이 없습니다.
                   </p>
                 ) : (
-                  selectedDateEvents.map((event) => (
-                    <div
-                      key={event.id}
-                      className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
-                    >
-                      <h4 className="font-korean font-bold">{event.title}</h4>
-                      {event.description && (
-                        <p className="font-korean text-sm text-muted-foreground mt-1">
-                          {event.description}
+                  <>
+                    {/* 1) 기존 로컬 일정 부분 그대로 유지 */}
+                    {selectedDateEvents.map((event) => (
+                      <div
+                        key={event.id}
+                        className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
+                      >
+                        <h4 className="font-korean font-bold">{event.title}</h4>
+                        {event.description && (
+                          <p className="font-korean text-sm text-muted-foreground mt-1">
+                            {event.description}
+                          </p>
+                        )}
+                        <p className="font-korean text-xs text-muted-foreground mt-2">
+                          {new Date(event.start_date).toLocaleString("ko-KR")}
                         </p>
-                      )}
-                      <p className="font-korean text-xs text-muted-foreground mt-2">
-                        {new Date(event.start_date).toLocaleString("ko-KR")}
-                      </p>
-                    </div>
-                  ))
+                      </div>
+                    ))}
+
+                    {/* 2) 선택한 날짜의 Google Calendar 일정 추가로 표시 */}
+                  {selectedGoogleEvents.map((ev: any) => {
+                    // 🔹 원본 시작/끝 값 꺼내기
+                    const startRaw = ev.start?.dateTime ?? ev.start?.date;
+                    const endRaw = ev.end?.dateTime ?? ev.end?.date;
+
+                    // 🔹 Date 객체로 변환
+                    const startDate = startRaw ? new Date(startRaw) : null;
+                    const endDate = endRaw ? new Date(endRaw) : null;
+
+                    // 🔹 dateTime 이 있으면 시간 이벤트, 없고 date 만 있으면 종일 이벤트
+                    const hasTimeStart = !!ev.start?.dateTime;
+                    const hasTimeEnd = !!ev.end?.dateTime;
+
+                    const startLabel = startDate
+                      ? hasTimeStart
+                        ? startDate.toLocaleTimeString("ko-KR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "종일"
+                      : "";
+
+                    const endLabel =
+                      endDate && hasTimeEnd
+                        ? endDate.toLocaleTimeString("ko-KR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "";
+
+                    // 🔹 여기부터는 너가 보내준 JSX 그대로
+                    return (
+                      <div
+                        key={ev.id}
+                        className="p-4 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-korean font-bold">
+                              {ev.summary || "(제목 없음)"}
+                            </h4>
+                            {ev.location && (
+                              <p className="font-korean text-xs text-muted-foreground mt-1">
+                                {ev.location}
+                              </p>
+                            )}
+                          </div>
+                          <p className="font-korean text-xs text-muted-foreground">
+                            {startLabel}
+                            {endLabel && ` ~ ${endLabel}`}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </>
                 )}
               </div>
             </CardContent>
@@ -399,7 +496,14 @@ export default function Calendar() {
 
         <Card className="mt-6 bg-card border-2 border-border shadow-card">
           <CardContent className="p-6">
-            <h3 className="font-pixel text-lg mb-4 text-foreground">Google Calendar</h3>
+            <h3 className="font-pixel text-lg mb-4 text-foreground">
+              Google Calendar
+                {date && (
+                  <span className="font-korean text-sm text-muted-foreground ml-2">
+                    ({date.getMonth() + 1}월 {date.getDate()}일)
+                  </span>
+                )}
+              </h3>
 
             {!gConnected && (
               <p className="font-korean text-sm text-muted-foreground">
@@ -414,14 +518,50 @@ export default function Calendar() {
                     불러오는 중...
                   </p>
                 )}
-                {!gLoading && gEvents.length === 0 ? (
+
+                {!gLoading && !date && (
+                  <p className="font-korean text-sm text-muted-foreground">
+                    날짜를 선택하면 해당 날짜의 일정을 볼 수 있습니다.
+                  </p>
+                )}
+
+
+                {!gLoading && gEvents.length === 0 && (
                   <p className="font-korean text-sm text-muted-foreground">
                     표시할 구글 일정이 없습니다.
                   </p>
-                ) : (
-                  gEvents.map((ev: any) => {
+                )}
+
+                  {!gLoading && date && selectedGoogleEvents.length > 0 &&(
+                    <>
+                  {selectedGoogleEvents.map((ev: any) => {
                     const start = ev.start?.dateTime || ev.start?.date;
                     const end = ev.end?.dateTime || ev.end?.date;
+
+                    const startDate = start ? new Date(start) : null;
+                    const endDate = end ? new Date(end) : null;
+
+                    const hasTimeStart = !!ev.start?.dateTime;
+                    const hasTimeEnd = !!ev.end?.dateTime;
+
+                    const startLabel = startDate
+
+                        ? hasTimeStart
+                          ? startDate.toLocaleTimeString("ko-KR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "종일"
+                        : "";
+
+                      const endLabel = 
+                        endDate && hasTimeEnd
+                          ? endDate.toLocaleTimeString("ko-KR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                        : "";
+                        
                     return (
                       <div
                         key={ev.id}
@@ -439,13 +579,14 @@ export default function Calendar() {
                             )}
                           </div>
                           <p className="font-korean text-xs text-muted-foreground">
-                            {start ? new Date(start).toLocaleString("ko-KR") : ""}
-                            {end ? ` ~ ${new Date(end).toLocaleString("ko-KR")}` : ""}
+                            {startLabel}
+                            {endLabel && ` ~ ${endLabel}`}
                           </p>
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                </>
                 )}
               </div>
             )}
