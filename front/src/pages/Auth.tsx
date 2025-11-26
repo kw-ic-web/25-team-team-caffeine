@@ -4,11 +4,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Heart, Zap } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from "lucide-react";
-
+import { loadGoogleIdentity } from "@/integrations/google/gis";
+import { getGoogleUserInfo } from "@/integrations/google/gis";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,7 +18,8 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { toast } = useToast();              // ✅ 추가
+  const { login, register, loginWithGoogle } = useAuth();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,25 +27,11 @@ export default function Auth() {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
+        await login(email, password);
         toast({ title: "로그인 성공!", description: "환영합니다!" });
         navigate("/");
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              display_name: displayName || "모험가",
-            },
-          },
-        });
-        if (error) throw error;
+        await register(email, password, displayName || "모험가");
         toast({
           title: "회원가입 성공!",
           description: "자동으로 로그인되었습니다.",
@@ -61,27 +49,37 @@ export default function Auth() {
     }
   };
 
-
+  // ✅ 새로 구현한 Google 로그인 버튼용 핸들러
   const handleGoogleLogin = async () => {
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (error) throw error;
-  } catch (err: any) {
-    toast({
-      title: "구글 로그인 실패",
-      description: err?.message ?? "다시 시도해 주세요.",
-      variant: "destructive",
-    });
-  }
-};
+    try {
+      setLoading(true);
 
+      // 1) Google에서 이메일/이름/고유 ID 받아오기
+      const profile = await getGoogleUserInfo();
 
+      // 2) 백엔드로 보내서 회원 생성/로그인
+      await loginWithGoogle({
+        email: profile.email,
+        displayName: profile.name,
+        googleId: profile.sub,
+      });
 
+      toast({
+        title: "로그인 성공!",
+        description: "Google 계정으로 로그인되었습니다.",
+      });
+      navigate("/");
+    } catch (error: any) {
+      console.error("[Google Login] error:", error);
+      toast({
+        title: "Google 로그인 실패",
+        description: error?.message ?? "알 수 없는 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -114,10 +112,9 @@ export default function Auth() {
                   </Label>
                   <Input
                     id="displayName"
-                    type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="모험가"
+                    placeholder="모험가의 이름을 지어주세요"
                     className="mt-1"
                   />
                 </div>
@@ -148,7 +145,7 @@ export default function Auth() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  placeholder="••••••••"
+                  placeholder="비밀번호를 입력하세요"
                   className="mt-1"
                   minLength={6}
                 />
@@ -168,10 +165,11 @@ export default function Auth() {
                   : "회원가입"}
               </Button>
             </form>
+
             <div className="mt-4">
               <Button
                 type="button"
-                onClick={handleGoogleLogin}
+                onClick={handleGoogleLogin}        // ✅ 이제 정의된 함수
                 variant="outline"
                 className="w-full flex items-center gap-2"
               >
@@ -179,7 +177,6 @@ export default function Auth() {
                 Google 계정으로 시작하기
               </Button>
             </div>
-
 
             <div className="mt-4 text-center">
               <button

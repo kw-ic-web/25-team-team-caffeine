@@ -2,23 +2,18 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Calendar, Check, Clock } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
-type Goal = {
-  id: string;
-  title: string;
-  completed: boolean;
-  progress: number;
-  powder_reward: number;
-  due_date: string | null;
-  difficulty: number;
-  schedule_type: "none" | "daily" | "specific_days" | "final_day_only";
-  schedule_days: number[] | null;
-  daily_powder_reward: number;
-  total_days: number;
-  completed_days: number;
+import { goalsApi, type Goal as BaseGoal } from "@/lib/api";
+
+// 백엔드 goals 테이블에는 없는 필드들이 있어서 기존 타입을 확장
+type Goal = BaseGoal & {
+  schedule_type?: "none" | "daily" | "specific_days" | "final_day_only";
+  schedule_days?: number[] | null;
+  daily_powder_reward?: number;
+  total_days?: number;
+  completed_days?: number;
 };
 
 export default function GoalsArchive() {
@@ -31,32 +26,33 @@ export default function GoalsArchive() {
 
   useEffect(() => {
     loadArchive();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isExpired = (due: string | null) => !!due && due < todayISO;
 
   const loadArchive = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
-
     setLoading(true);
+    try {
+      // ✅ 백엔드(MySQL)에서 현재 로그인한 유저의 모든 goals를 가져옴
+      const data = await goalsApi.list();
 
-    const { data, error } = await supabase
-      .from("goals")
-      .select("*")
-      .eq("user_id", session.user.id)
-      // 완료됐거나 마감이 지난 목표 = 아카이브 대상
-      .or(`completed.eq.true,due_date.lt.${todayISO}`)
-      .order("created_at", { ascending: false });
+      // ✅ 완료됐거나 마감이 지난 목표만 아카이브 대상으로 필터링
+      const archiveGoals: Goal[] = (data || []).filter(
+        (g) => g.completed || isExpired(g.due_date)
+      );
 
-    if (error) {
-      toast({ title: "로드 실패", description: error.message, variant: "destructive" });
-    } else {
-      setGoals((data || []) as Goal[]);
+      setGoals(archiveGoals);
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "로드 실패",
+        description: err.message || "목표 아카이브를 불러오지 못했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const completedGoals = goals.filter((g) => g.completed);
@@ -67,7 +63,9 @@ export default function GoalsArchive() {
       <div className="container mx-auto max-w-4xl">
         <div className="mb-8 animate-slide-up flex items-center justify-between">
           <h1 className="font-pixel text-2xl sm:text-3xl text-foreground">지난 목표</h1>
-          <Button variant="neon" onClick={() => navigate("/goals")}>목표로 돌아가기</Button>
+          <Button variant="neon" onClick={() => navigate("/goals")}>
+            목표로 돌아가기
+          </Button>
         </div>
 
         {/* 상단 요약 카드 */}
@@ -78,8 +76,12 @@ export default function GoalsArchive() {
                 <Check className="w-5 h-5 text-success" />
               </div>
               <div>
-                <div className="font-pixel text-2xl text-success">{completedGoals.length}</div>
-                <div className="font-korean text-xs text-muted-foreground">완료한 목표</div>
+                <div className="font-pixel text-2xl text-success">
+                  {completedGoals.length}
+                </div>
+                <div className="font-korean text-xs text-muted-foreground">
+                  완료한 목표
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -90,8 +92,12 @@ export default function GoalsArchive() {
                 <Clock className="w-5 h-5 text-warning" />
               </div>
               <div>
-                <div className="font-pixel text-2xl text-warning">{pastDueGoals.length}</div>
-                <div className="font-korean text-xs text-muted-foreground">마감 지난 목표</div>
+                <div className="font-pixel text-2xl text-warning">
+                  {pastDueGoals.length}
+                </div>
+                <div className="font-korean text-xs text-muted-foreground">
+                  마감 지난 목표
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -116,7 +122,9 @@ export default function GoalsArchive() {
               <h2 className="font-pixel text-xl mb-3 flex items-center gap-2">
                 <Check className="w-5 h-5 text-success" />
                 완료한 목표
-                <span className="font-korean text-xs text-muted-foreground">({completedGoals.length})</span>
+                <span className="font-korean text-xs text-muted-foreground">
+                  ({completedGoals.length})
+                </span>
               </h2>
 
               {completedGoals.length === 0 ? (
@@ -167,7 +175,9 @@ export default function GoalsArchive() {
               <h2 className="font-pixel text-xl mb-3 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-warning" />
                 마감 지난 목표
-                <span className="font-korean text-xs text-muted-foreground">({pastDueGoals.length})</span>
+                <span className="font-korean text-xs text-muted-foreground">
+                  ({pastDueGoals.length})
+                </span>
               </h2>
 
               {pastDueGoals.length === 0 ? (

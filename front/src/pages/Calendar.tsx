@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent } from "@/components/ui/card.tsx";
 import { Calendar as CalendarUI } from "@/components/ui/calendar.tsx";
 import { Plus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client.ts";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast.ts";
 import {
@@ -23,13 +22,10 @@ import {
   getValidAccessToken,
 } from "@/integrations/google/gis.ts";
 
-interface CalendarEvent {
-  id: string;
-  title: string;
-  description: string;
-  start_date: string;
-  end_date: string;
-}
+import { calendarApi, type CalendarEvent as ApiCalendarEvent } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+
+type CalendarEvent = ApiCalendarEvent;
 
 export default function Calendar() {
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -40,13 +36,17 @@ export default function Calendar() {
   const [newEventEndDate, setNewEventEndDate] = useState("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   // Google Calendar 연동 상태
   const [gEvents, setGEvents] = useState<any[]>([]);
   const [gLoading, setGLoading] = useState(false);
-  const [gConnected, setGConnected] = useState<boolean>(!!getCachedAccessToken());
+  const [gConnected, setGConnected] = useState<boolean>(
+    !!getCachedAccessToken()
+  );
 
   async function fetchGoogleCalendar() {
   try {
@@ -123,9 +123,12 @@ export default function Calendar() {
   async function debugListCalendars() {
     try {
       const token = await getValidAccessToken();
-      const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       const data = await res.json();
       console.log("[GCAL] calendarList", data);
       toast({
@@ -142,56 +145,41 @@ export default function Calendar() {
     }
   }
 
-
-
-
+  // 로그인 여부 체크 + 일정 로딩
   useEffect(() => {
-    checkAuth();
-    loadEvents();
-  
-    if (getCachedAccessToken()) {
-      fetchGoogleCalendar(); 
-    }
-  }, []);
+    if (authLoading) return;
 
-
-  const checkAuth = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
+    if (!user) {
       toast({
         title: "로그인이 필요합니다",
         description: "로그인 후 이용해주세요.",
         variant: "destructive",
       });
       navigate("/auth");
-    }
-  };
-
-  const loadEvents = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const { data, error } = await supabase
-      .from("calendar_events")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .order("start_date", { ascending: true });
-
-    if (error) {
-      toast({
-        title: "내 일정 불러오기 실패",
-        description: error.message,
-        variant: "destructive",
-      });
       return;
     }
 
-    if (data) {
+    // 로그인 되어 있으면 내 일정 로딩
+    loadEvents();
+
+    // Google AccessToken 캐시가 있으면 바로 연동 시도
+    if (getCachedAccessToken()) {
+      fetchGoogleCalendar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
+
+  const loadEvents = async () => {
+    try {
+      const data = await calendarApi.list();
       setEvents(data);
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "내 일정 불러오기 실패",
+        description: err.message || "다시 시도해 주세요.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -205,28 +193,26 @@ export default function Calendar() {
       return;
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!user) {
+      toast({
+        title: "로그인이 필요합니다",
+        description: "로그인 후 다시 시도해주세요.",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
 
     setLoading(true);
 
-    const { error } = await supabase.from("calendar_events").insert({
-      user_id: session.user.id,
-      title: newEventTitle,
-      description: newEventDescription,
-      start_date: newEventStartDate,
-      end_date: newEventEndDate || newEventStartDate,
-    });
-
-    if (error) {
-      toast({
-        title: "오류 발생",
-        description: error.message,
-        variant: "destructive",
+    try {
+      await calendarApi.create({
+        title: newEventTitle,
+        description: newEventDescription || null,
+        startDate: newEventStartDate,
+        endDate: newEventEndDate || newEventStartDate,
       });
-    } else {
+
       toast({ title: "일정 추가 완료!" });
       setNewEventTitle("");
       setNewEventDescription("");
@@ -234,9 +220,16 @@ export default function Calendar() {
       setNewEventEndDate("");
       setOpen(false);
       loadEvents();
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "오류 발생",
+        description: err.message || "다시 시도해 주세요.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const selectedDateEvents = events.filter((event) => {
@@ -250,16 +243,17 @@ export default function Calendar() {
   });
 
   const selectedGoogleEvents = gEvents.filter((ev) => {
-  if (!date) return false;
-  const startStr = ev.start?.dateTime || ev.start?.date;
-  if (!startStr) return false;
-  const start = new Date(startStr);
-  return (
-    start.getDate() === date.getDate() &&
-    start.getMonth() === date.getMonth() &&
-    start.getFullYear() === date.getFullYear()
-  );
-});
+    if (!date) return false;
+    const startStr = ev.start?.dateTime || ev.start?.date;
+    if (!startStr) return false;
+    const start = new Date(startStr);
+    return (
+      start.getDate() === date.getDate() &&
+      start.getMonth() === date.getMonth() &&
+      start.getFullYear() === date.getFullYear()
+    );
+  });
+
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-6xl">
@@ -279,7 +273,9 @@ export default function Calendar() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle className="font-pixel">새로운 일정 추가</DialogTitle>
+                  <DialogTitle className="font-pixel">
+                    새로운 일정 추가
+                  </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
@@ -300,7 +296,9 @@ export default function Calendar() {
                     <Textarea
                       id="description"
                       value={newEventDescription}
-                      onChange={(e) => setNewEventDescription(e.target.value)}
+                      onChange={(e) =>
+                        setNewEventDescription(e.target.value)
+                      }
                       placeholder="일정 설명"
                     />
                   </div>
@@ -312,7 +310,9 @@ export default function Calendar() {
                       id="startDate"
                       type="datetime-local"
                       value={newEventStartDate}
-                      onChange={(e) => setNewEventStartDate(e.target.value)}
+                      onChange={(e) =>
+                        setNewEventStartDate(e.target.value)
+                      }
                     />
                   </div>
                   <div>
@@ -345,7 +345,11 @@ export default function Calendar() {
               disabled={gLoading}
               className="w-full sm:w-auto"
             >
-              {gConnected ? (gLoading ? "새로고침..." : "구글 일정 새로고침") : "구글 캘린더 연결"}
+              {gConnected
+                ? gLoading
+                  ? "새로고침..."
+                  : "구글 일정 새로고침"
+                : "구글 캘린더 연결"}
             </Button>
           </div>
         </div>
@@ -462,7 +466,9 @@ export default function Calendar() {
         {/* 내 전체 일정 */}
         <Card className="mt-6 bg-card border-2 border-border shadow-card">
           <CardContent className="p-6">
-            <h3 className="font-pixel text-lg mb-4 text-foreground">전체 일정</h3>
+            <h3 className="font-pixel text-lg mb-4 text-foreground">
+              전체 일정
+            </h3>
             <div className="space-y-3">
               {events.length === 0 ? (
                 <p className="font-korean text-sm text-muted-foreground">
@@ -476,7 +482,9 @@ export default function Calendar() {
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h4 className="font-korean font-bold">{event.title}</h4>
+                        <h4 className="font-korean font-bold">
+                          {event.title}
+                        </h4>
                         {event.description && (
                           <p className="font-korean text-sm text-muted-foreground mt-1">
                             {event.description}
@@ -484,7 +492,9 @@ export default function Calendar() {
                         )}
                       </div>
                       <p className="font-korean text-xs text-muted-foreground">
-                        {new Date(event.start_date).toLocaleDateString("ko-KR")}
+                        {new Date(
+                          event.start_date
+                        ).toLocaleDateString("ko-KR")}
                       </p>
                     </div>
                   </div>
@@ -494,6 +504,7 @@ export default function Calendar() {
           </CardContent>
         </Card>
 
+        {/* Google Calendar 일정 */}
         <Card className="mt-6 bg-card border-2 border-border shadow-card">
           <CardContent className="p-6">
             <h3 className="font-pixel text-lg mb-4 text-foreground">
