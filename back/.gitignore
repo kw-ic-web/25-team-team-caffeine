@@ -1,1 +1,2 @@
-/.env
+/back/.env
+/back/node_modules
