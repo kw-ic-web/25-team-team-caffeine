@@ -145,7 +145,7 @@ export default function Auth() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  placeholder="••••••••"
+                  placeholder="비밀번호를 입력하세요"
                   className="mt-1"
                   minLength={6}
                 />
