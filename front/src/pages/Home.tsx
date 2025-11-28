@@ -16,10 +16,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { goalsApi, petsApi, type Goal } from "@/lib/api";
+import { usePet } from "@/contexts/PetContext.tsx";
 
-import Pet1Img from "@/petimg/Pet1.png";
-import Pet2Img from "@/petimg/Pet2.png";
-import Pet3Img from "@/petimg/Pet3.png";
 
 type StatCardData = {
   label: string;
@@ -107,6 +105,8 @@ export default function Home() {
 
   const navigate = useNavigate();
 
+
+  
   useEffect(() => {
     // AuthContext 초기 로딩 중이면 아무것도 하지 않음
     if (authLoading) return;
@@ -216,6 +216,34 @@ export default function Home() {
           experience: p.experience,
         }))
       );
+
+      const Home = () => {
+      const { mainPet } = usePet();  // PetContext에서 메인 펫 상태 가져오기
+
+      // 메인 펫이 없으면 이미지 표시하지 않음
+      if (!mainPet) {
+        return <div>메인 펫이 설정되지 않았습니다.</div>; // 대신 보여줄 내용
+      }
+
+      const petImage = mainPet.avatar_url && mainPet.avatar_url.trim() !== ""
+        ? mainPet.avatar_url
+        : null; // 기본 이미지는 사용하지 않음
+
+        return (
+      <div>
+        <h1>나의 메인 펫</h1>
+        {/* 메인 펫 이미지가 있을 경우만 출력 */}
+        {petImage && (
+          <img
+            src={petImage}
+            alt={mainPet.name || "pet"}
+            className="w-20 h-21 object-contain"
+          />
+        )}
+      </div>
+    );
+  };  
+
 
       // 아직 도전방 기능은 백엔드가 없으니 비워둠
       setRooms([]);
@@ -530,7 +558,7 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
                   src={
                     pet.avatar_url && pet.avatar_url.trim() !== ""
                       ? pet.avatar_url
-                      : Pet1Img
+                      : null
                   }
                   alt={pet.name || "pet"}
                   className="w-20 h-21 object-contain"
@@ -645,7 +673,7 @@ function DashboardSkeleton() {
 
         <div className="mt-8 bg-card/50 border-2 border-border rounded-lg p-6">
           <div className="h-5 w-32 bg-muted rounded mb-4" />
-          <div className="space-y-3">
+          <div className="sApace-y-3">
             {[0, 1].map((j) => (
               <div
                 key={j}

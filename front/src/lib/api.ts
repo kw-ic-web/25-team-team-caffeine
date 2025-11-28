@@ -183,11 +183,12 @@ export interface Pet {
   updated_at: string;
 }
 
+// avatar_url을 받도록 타입을 수정
 export const petsApi = {
   list() {
     return request<Pet[]>("/api/pets", {}, true);
   },
-  create(payload: { name: string; rarity?: string }) {
+  create(payload: { name: string; rarity?: string; avatar_url: string }) { 
     return request<Pet>(
       "/api/pets",
       { method: "POST", body: JSON.stringify(payload) },
@@ -209,6 +210,7 @@ export const petsApi = {
     );
   },
 };
+
 
 // ===== Powder =====
 export const powderApi = {

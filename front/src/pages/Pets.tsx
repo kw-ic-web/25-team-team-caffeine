@@ -16,9 +16,20 @@ import {
   UPGRADE_SUCCESS_RATES,
 } from "@/utils/upgradeSystem.ts";
 
-import { useAuth } from "@/contexts/AuthContext";
-import { petsApi, powderApi, type Pet as ApiPet, type PetRarity, } from "@/lib/api";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useAuth } from "@/contexts/AuthContext.tsx";
+import { usePet } from "@/contexts/PetContext.tsx";
+import {
+  petsApi,
+  powderApi,
+  type Pet as ApiPet,
+  type PetRarity,
+} from "@/lib/api.ts";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.tsx";
 
 // API에서 오는 Pet 타입을 확장 (last_main_change를 프론트에서 사용)
 interface Pet extends ApiPet {
@@ -52,9 +63,9 @@ export default function Pets() {
   const [loading, setLoading] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
   const [revealPet, setRevealPet] = useState<{
-  name: string;
-  rarity: PetRarity;
-} | null>(null);
+    name: string;
+    rarity: PetRarity;
+  } | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -62,7 +73,9 @@ export default function Pets() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // 로그인 안 되어 있으면 접근 제한
+  // ✅ PetContext에서 mainPet, setMainPet 가져오기
+  const { setMainPet } = usePet();
+
   useEffect(() => {
     if (user === null) {
       toast({
@@ -74,10 +87,8 @@ export default function Pets() {
     }
   }, [user, navigate, toast]);
 
-  // 펫/가루 데이터 로딩
   useEffect(() => {
     if (!user) return;
-
     const init = async () => {
       await Promise.all([loadPets(), loadPowder()]);
     };
@@ -88,7 +99,6 @@ export default function Pets() {
   const loadPets = async () => {
     try {
       const data = await petsApi.list();
-      // last_main_change 컬럼이 없을 수도 있으니 안전하게 캐스팅
       setPets(data as Pet[]);
     } catch (err) {
       console.error(err);
@@ -134,10 +144,12 @@ export default function Pets() {
     return `${hoursRemaining}시간`;
   };
 
-  const setMainPet = async (id: string) => {
+  // ⚠️ 이름 겹치지 않게 로컬 함수 이름 변경
+  const handleSetMainPet = async (id: string) => {
     if (!user) return;
 
     const currentMain = pets.find((p) => p.is_main);
+
     if (
       currentMain &&
       !canChangeMainPet((currentMain as Pet).last_main_change ?? null)
@@ -156,19 +168,22 @@ export default function Pets() {
     try {
       setLoading(true);
 
-      // 1) 기존 메인 펫 해제
       if (currentMain) {
         await petsApi.update(currentMain.id, {
           is_main: false as any,
         });
       }
 
-      // 2) 새 메인 펫 설정
       await petsApi.update(id, {
         is_main: true as any,
-        // 백엔드에서 last_main_change 컬럼이 있다면 자동 반영
         last_main_change: new Date().toISOString() as any,
       });
+
+      // ✅ PetContext 쪽 메인 펫 상태도 갱신
+      const newMain = pets.find((pet) => pet.id === id);
+      if (newMain) {
+        setMainPet(newMain as any);
+      }
 
       toast({
         title: "메인 펫 설정 완료!",
@@ -189,13 +204,34 @@ export default function Pets() {
   };
 
   const getRarityByProbability = (): PetRarity => {
-  const rand = Math.random() * 100;
+    const rand = Math.random() * 100;
 
-  if (rand < 1) return "legendary";
-  if (rand < 10) return "epic";
-  if (rand < 32) return "rare";
-  return "common";
-};
+    if (rand < 1) return "legendary";
+    if (rand < 10) return "epic";
+    if (rand < 32) return "rare";
+    return "common";
+  };
+
+  // (지금은 안 쓰이고 있어서 냅둬도 되고, 경고 뜨면 삭제해도 됨)
+  const getPetImage = (pet: Pet): string => {
+    let imagePrefix = "hat_";
+    if (pet.stars === 3) {
+      imagePrefix = "laptop_";
+    } else if (pet.stars === 5) {
+      imagePrefix = "worker_";
+    }
+    return `/petimg/${imagePrefix}${pet.name.toLowerCase()}.png`;
+  };
+
+  const PetComponent = () => {
+    const [currentPet, setCurrentPet] = useState<Pet>(pets[0]);
+    return (
+      <div>
+        <img src={getPetImage(currentPet)} alt={currentPet.name} className="pet-image" />
+        <button onClick={() => setCurrentPet(pets[1])}>Change Pet</button>
+      </div>
+    );
+  };
 
   const createPet = async () => {
     const cost = 500;
@@ -217,20 +253,33 @@ export default function Pets() {
       return;
     }
 
-    setLoading(true);
+  const hatImages = [
+    "bear",
+    "cat",
+    "dog",
+    "fox",
+    "hedgehog",
+    "koala",
+    "otter",
+    "panda",
+    "quokka",
+    "rabbit",
+  ];
 
+    const randomAnimal = hatImages[Math.floor(Math.random() * hatImages.length)];
+    const avatarUrl = `/petimg/hat_${randomAnimal}.png`; 
     const rarity = getRarityByProbability();
     const name = getRandomPetName();
 
-    try {
-      // 1) 펫 생성
-      await petsApi.create({ name, rarity });
+    setLoading(true);
 
-      // 2) 가루 차감 (delta = -cost)
+
+
+    try {
+      await petsApi.create({ name, rarity, avatar_url: avatarUrl });
       const res = await powderApi.update(-cost);
       setPowder(res.amount);
 
-      // 3) 연출
       setRevealPet({ name, rarity });
       setShowReveal(true);
 
@@ -289,16 +338,11 @@ export default function Pets() {
     try {
       setLoading(true);
 
-      // 1) 가루 차감
       const res = await powderApi.update(-cost);
       setPowder(res.amount);
 
-      // 2) 성공/실패 판정
       const success = attemptUpgrade(selectedPet.stars);
 
-      // TODO: 나중에 upgrade_logs를 위한 백엔드 API를 만들면 여기서 호출
-
-      // 3) 결과 반영
       if (success) {
         await petsApi.update(selectedPet.id, {
           stars: selectedPet.stars + 1,
@@ -469,7 +513,7 @@ export default function Pets() {
                     <Button
                       variant="neon"
                       size="sm"
-                      onClick={() => setMainPet(pet.id)}
+                      onClick={() => handleSetMainPet(pet.id)}
                       className="flex-1"
                       disabled={pets.some(
                         (p) =>
