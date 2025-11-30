@@ -374,9 +374,10 @@ export interface DailyTask {
 }
 
 export const dailyTasksApi = {
-  listToday() {
+  listToday(date?: string) {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
     return request<DailyTask[]>(
-      "/api/daily-tasks/today",
+      `/api/daily-tasks/today${qs}`,
       {},
       true
     );

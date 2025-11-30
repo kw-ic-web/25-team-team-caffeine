@@ -6,6 +6,8 @@ import { router as goalsRouter } from "./goals.routes";
 import { router as petsRouter } from "./pets.routes";
 import { router as userPowderRouter } from "./userPowder.routes";
 import { router as calendarEventsRouter } from "./calendarEvents.routes";
+import dailyTasksRoutes from "./dailyTasks.routes";
+import communityRouter from "./community.routes"; 
 
 export function registerRoutes(app: Express) {
   app.use("/api/health", (_req, res) => res.json({ ok: true }));
@@ -15,4 +17,6 @@ export function registerRoutes(app: Express) {
   app.use("/api/pets", petsRouter);
   app.use("/api/powder", userPowderRouter);
   app.use("/api/calendar-events", calendarEventsRouter);
+  app.use("/api/daily-tasks", dailyTasksRoutes);
+  app.use("/api/community", communityRouter);
 }

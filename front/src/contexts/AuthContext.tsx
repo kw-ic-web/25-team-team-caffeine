@@ -1,11 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from "react";
-
+import React, { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { User } from "../types/user";
 import { authApi, getToken, setToken, clearToken } from "../lib/api";
 
@@ -13,16 +6,8 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (
-    email: string,
-    password: string,
-    displayName?: string
-  ) => Promise<void>;
-  loginWithGoogle: (profile: {
-    email: string;
-    displayName?: string;
-    googleId: string;
-  }) => Promise<void>;             // ✅ 추가
+  register: (email: string, password: string, displayName?: string) => Promise<void>;
+  loginWithGoogle: (profile: { email: string; displayName?: string; googleId: string }) => Promise<void>;
   logout: () => void;
 }
 
@@ -34,21 +19,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
-      const token = getToken();
-      if (!token) {
-        setLoading(false);
-        return;
-      }
       try {
+        const token = getToken();
+
+        // ✅ 토큰 없으면: 명확히 비로그인 처리
+        if (!token) {
+          setUser(null);
+          return;
+        }
+
         const me = await authApi.me();
         setUser(me);
       } catch (err) {
         console.error(err);
         clearToken();
+        setUser(null); // ✅ 추가
       } finally {
         setLoading(false);
       }
     }
+
     init();
   }, []);
 
@@ -58,22 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   };
 
-  const loginWithGoogle = async (profile: {
-    email: string;
-    displayName?: string;
-    googleId: string;
-  }) => {
-    const res = await authApi.googleLogin(profile);
+  const register = async (email: string, password: string, displayName?: string) => {
+    const res = await authApi.register(email, password, displayName);
     setToken(res.token);
     setUser(res.user);
   };
-  
-  const register = async (
-    email: string,
-    password: string,
-    displayName?: string
-  ) => {
-    const res = await authApi.register(email, password, displayName);
+
+  const loginWithGoogle = async (profile: { email: string; displayName?: string; googleId: string }) => {
+    const res = await authApi.googleLogin(profile);
     setToken(res.token);
     setUser(res.user);
   };
@@ -84,9 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, loading, login, register, loginWithGoogle, logout }}
-    >
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -94,8 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth는 AuthProvider 안에서만 사용해야 합니다.");
-  }
+  if (!ctx) throw new Error("useAuth는 AuthProvider 안에서만 사용해야 합니다.");
   return ctx;
 }

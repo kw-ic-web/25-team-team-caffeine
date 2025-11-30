@@ -786,6 +786,7 @@ export default function Community() {
                                 }))}
                               >
                                 <Line
+                                  // @ts-ignore
                                   type="monotone"
                                   dataKey="exp"
                                   stroke={
