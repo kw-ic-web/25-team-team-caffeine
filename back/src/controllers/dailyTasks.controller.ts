@@ -17,14 +17,12 @@ function isValidDateStr(d: string) {
 }
 
 function checkIsScheduled(goal: any, ymd: string, dayOfWeek: number): boolean {
-  // 1. 마감일 체크
   if (goal.due_date) {
     let goalDue = "";
     
     if (typeof goal.due_date === 'string') {
        goalDue = goal.due_date.substring(0, 10);
     } else {
-       // ✅ [핵심 수정] Date 객체일 경우 UTC가 아니라 KST로 변환해서 비교
        const utc = goal.due_date.getTime() + (goal.due_date.getTimezoneOffset() * 60000);
        const kstGap = 9 * 60 * 60 * 1000; 
        const kstDate = new Date(utc + kstGap);
@@ -34,14 +32,11 @@ function checkIsScheduled(goal: any, ymd: string, dayOfWeek: number): boolean {
        const d = String(kstDate.getDate()).padStart(2, "0");
        goalDue = `${y}-${m}-${d}`;
     }
-    
-    // 마감일이 오늘(ymd)보다 작으면(과거면) false
+  
     if (goalDue < ymd) return false; 
   }
 
   const type = goal.schedule_type || "none";
-
-  // 2. 스케줄 타입별 체크
   if (type === "none" || type === "daily") {
     return true; 
   } 
@@ -65,7 +60,6 @@ function checkIsScheduled(goal: any, ymd: string, dayOfWeek: number): boolean {
        if (typeof goal.due_date === 'string') {
           goalDue = goal.due_date.substring(0, 10);
        } else {
-          // 여기도 KST 변환 적용
           const utc = goal.due_date.getTime() + (goal.due_date.getTimezoneOffset() * 60000);
           const kstDate = new Date(utc + (9 * 60 * 60 * 1000));
           const y = kstDate.getFullYear();
@@ -86,7 +80,6 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    // 1. 날짜 결정
     let ymd = req.query.date as string;
     
     if (!ymd || !isValidDateStr(ymd)) {
@@ -105,9 +98,6 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
     const dayOfWeek = new Date(ymd).getDay();
 
     console.log(`[DailyTask] 조회 - User: ${userId}, Date: ${ymd}`);
-
-    // 2. 유효한(완료되지 않은) 목표 전체 조회
-    // ✅ [수정] created_at 조건 삭제 (오늘 만든 것도 바로 보여야 함)
     const [goalRows] = await pool.query(
       `SELECT id, title, schedule_type, schedule_days, due_date 
        FROM goals 
@@ -117,15 +107,11 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
 
     const tasksToCreate: string[] = [];
 
-    // 3. 생성할 태스크 선별
     for (const g of goalRows as any[]) {
-      // checkIsScheduled 함수가 "오늘 마감"인 경우도 true를 반환해야 함
       if (checkIsScheduled(g, ymd, dayOfWeek)) {
         tasksToCreate.push(g.id);
       }
     }
-
-    // 4. DB에 태스크 생성 (없을 경우에만)
     for (const goalId of tasksToCreate) {
       const [existing] = await pool.query(
         `SELECT id FROM daily_tasks 
@@ -142,8 +128,6 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
         );
       }
     }
-
-    // 5. 최종 조회
     const [rows] = await pool.query(
       `SELECT DISTINCT
         dt.id, dt.goal_id, 
@@ -160,7 +144,6 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
       [userId, startOfDay, endOfDay]
     );
 
-    // 6. 결과 필터링 (좀비 데이터 제거)
     const validResults = (rows as any[]).filter(r => {
         return checkIsScheduled(r, ymd, dayOfWeek);
     });
@@ -191,7 +174,6 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
   }
 }
 
-// ... completeDailyTask, failDailyTask는 기존 그대로 유지 ...
 export async function completeDailyTask(req: AuthedRequest, res: Response) {
   try {
     const userId = req.user?.id;
@@ -286,9 +268,6 @@ export async function failDailyTask(req: AuthedRequest, res: Response) {
       `UPDATE daily_tasks SET failed = 1, completed = 0 WHERE id = ?`,
       [taskId]
     );
-
-    // 가루 차감 로직 필요 시 추가
-
     res.json({ message: "ok" });
   } catch (err) {
     console.error(err);

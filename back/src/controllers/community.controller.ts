@@ -12,20 +12,16 @@ function generateUUID() {
   });
 }
 
-// 1. 피드 조회
 export const getFeed = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
 
-    // posts + users JOIN (BINARY 추가로 문자셋 충돌 방지)
     const [posts] = await pool.query(`
       SELECT p.*, u.display_name 
       FROM posts p
       JOIN users u ON BINARY p.user_id = BINARY u.id
       ORDER BY p.created_at DESC
     `);
-
-    // 좋아요/댓글 수 조회
     const [likes] = await pool.query(`SELECT post_id, COUNT(*) as count FROM post_likes GROUP BY post_id`);
     const [comments] = await pool.query(`SELECT post_id, COUNT(*) as count FROM post_comments GROUP BY post_id`);
     
@@ -54,14 +50,18 @@ export const getFeed = async (req: AuthedRequest, res: Response) => {
   }
 };
 
-// 2. 게시글 작성
 export const createPost = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { content } = req.body; 
-    const imageUrl = null;
+    let imageUrl = null;
+    if (req.file) {
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    }
+
     const id = generateUUID();
 
     await pool.query(
@@ -70,7 +70,6 @@ export const createPost = async (req: AuthedRequest, res: Response) => {
       [id, userId, content, imageUrl]
     );
 
-    // 작성 후 바로 반환
     const [rows] = await pool.query(`
         SELECT p.*, u.display_name 
         FROM posts p 
@@ -84,8 +83,6 @@ export const createPost = async (req: AuthedRequest, res: Response) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-// 3. 도전방 조회
 export const getChallenges = async (req: Request, res: Response) => {
   try {
     const [rows] = await pool.query(`
@@ -104,8 +101,6 @@ export const getChallenges = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-// 4. 도전방 생성
 export const createChallenge = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -134,7 +129,6 @@ export const createChallenge = async (req: AuthedRequest, res: Response) => {
   }
 };
 
-// 5. 댓글 조회
 export const getComments = async (req: Request, res: Response) => {
   try {
     const { postId } = req.params;
@@ -153,7 +147,6 @@ export const getComments = async (req: Request, res: Response) => {
   }
 };
 
-// 6. 댓글 작성
 export const addComment = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -184,7 +177,6 @@ export const addComment = async (req: AuthedRequest, res: Response) => {
   }
 };
 
-// 7. 좋아요 토글
 export const toggleLike = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -222,7 +214,6 @@ export const toggleLike = async (req: AuthedRequest, res: Response) => {
   }
 };
 
-// 8. 랭킹 조회
 export const getRankings = async (req: Request, res: Response) => {
   try {
     const [rows] = await pool.query(`
@@ -249,6 +240,80 @@ export const getRankings = async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     console.error("[Community] Ranking Error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getMyChallenges = async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const [rows] = await pool.query(`
+      SELECT 
+        r.id, 
+        r.name as title, 
+        r.deadline,
+        (SELECT COUNT(*) FROM chat_participants WHERE room_id = r.id) as memberCount
+      FROM chat_rooms r
+      JOIN chat_participants p ON r.id = p.room_id
+      WHERE p.user_id = ?
+      ORDER BY r.created_at DESC
+    `, [userId]);
+
+    const result = (rows as any[]).map((row) => {
+        let daysLeft = 0;
+        if (row.deadline) {
+            const now = new Date();
+            const end = new Date(row.deadline);
+            const diff = end.getTime() - now.getTime();
+            daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        }
+        return {
+            id: row.id,
+            title: row.title,
+            daysLeft,
+            memberCount: row.memberCount
+        };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+export const getChatMessages = async (req: Request, res: Response) => {
+  try {
+    const { roomId } = req.params;
+    console.log(`[Chat] Loading messages for Room ID: ${roomId}`);
+    
+    const [rows] = await pool.query(`
+      SELECT 
+        m.id, 
+        m.user_id, 
+        m.message, 
+        m.created_at,
+        u.display_name
+      FROM chat_messages m
+      JOIN users u ON BINARY m.user_id = BINARY u.id  -- ✅ [핵심 수정] BINARY 추가
+      WHERE m.room_id = ?
+      ORDER BY m.created_at ASC
+    `, [roomId]);
+
+    const result = (rows as any[]).map(row => ({
+        id: row.id,
+        user_id: row.user_id,
+        message: row.message,
+        created_at: row.created_at,
+        profiles: {
+            display_name: row.display_name || "알 수 없음"
+        }
+    }));
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("[Chat] Load Error:", err.message);
+    if (err.sql) console.error("[SQL]:", err.sql);
     res.status(500).json({ message: "Server error" });
   }
 };

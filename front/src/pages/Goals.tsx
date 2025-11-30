@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"; // useCallback 추가
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-
-// ✅ API 및 Auth
 import { goalsApi, calendarApi, dailyTasksApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -158,8 +156,6 @@ export default function Goals() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
-  
-  // ✅ [핵심 수정] 데이터 로딩 중복 방지용 Ref
   const isFetching = useRef(false);
 
   const { user, loading: authLoading, logout } = useAuth();
@@ -169,7 +165,6 @@ export default function Goals() {
     { label: "목", value: 4 }, { label: "금", value: 5 }, { label: "토", value: 6 }, { label: "일", value: 0 },
   ];
 
-  // 1. 인증 체크
   useEffect(() => {
     if (!authLoading && !user) {
       toast({ title: "로그인이 필요합니다", description: "로그인 후 이용해주세요.", variant: "destructive" });
@@ -177,9 +172,8 @@ export default function Goals() {
     }
   }, [authLoading, user, navigate, toast]);
 
-  // ✅ [핵심 수정] 데이터 로딩 함수 (useCallback으로 재생성 방지)
   const loadAllData = useCallback(async () => {
-    if (isFetching.current) return; // 이미 로딩 중이면 중단
+    if (isFetching.current) return;
     isFetching.current = true;
     setLoading(true);
     
@@ -192,7 +186,6 @@ export default function Goals() {
         calendarApi.list().catch(() => [])
       ]);
 
-      // 목표 처리
       const allGoals = (goalsRes as any[]).map(normalizeGoal);
       const activeGoals = allGoals.filter((g) => !g.completed);
       const completed = allGoals.filter((g) => g.completed);
@@ -200,11 +193,9 @@ export default function Goals() {
       setGoals(activeGoals);
       setCompletedArchiveCount(completed.length);
 
-      // 태스크 처리
       const tasksArr = Array.isArray(tasksRes) ? tasksRes : [];
       setDailyTasks(tasksArr.map(normalizeDailyTask));
 
-      // 캘린더 처리
       setCalendarEvents(eventsRes as CalendarEvent[]);
 
     } catch (err: any) {
@@ -217,22 +208,18 @@ export default function Goals() {
       setLoading(false);
       isFetching.current = false;
     }
-  }, [logout, navigate]); // 의존성 최소화
+  }, [logout, navigate]);
 
-  // 2. 데이터 로딩 실행 (user.id가 있을 때만)
   useEffect(() => {
     if (user?.id) {
       loadAllData();
     }
   }, [user?.id, loadAllData]);
 
-  // 3. 보상 계산
   useEffect(() => {
     calculateReward();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newGoalDifficulty, newGoalDueDate]);
 
-  // ... (나머지 함수들은 기존과 동일하므로 그대로 유지) ...
   const handleTitleChange = (value: string) => {
     setNewGoalTitle(value);
     if (value.trim().length > 0) {
@@ -317,9 +304,6 @@ export default function Goals() {
     }
     if (!user) return;
 
-    // setLoading(true); // 여기서 loading을 true로 바꾸면 loadAllData와 충돌할 수 있음. isFetching만 체크하거나 별도 처리 필요하지만, 
-    // 여기선 다이얼로그 닫히고 loadAllData 호출하므로 괜찮음.
-
     const totalDays = calculateTotalDays();
     const safeTotalDays = totalDays > 0 ? totalDays : 1;
 
@@ -345,7 +329,6 @@ export default function Goals() {
       setSelectedDays([]);
       setOpen(false);
       
-      // 강제 갱신
       isFetching.current = false; 
       loadAllData();
     } catch (err: any) {
@@ -374,7 +357,6 @@ export default function Goals() {
         });
       }
 
-      // 강제 갱신
       isFetching.current = false;
       loadAllData();
     } catch (err: any) {
@@ -390,7 +372,7 @@ export default function Goals() {
   const failDailyTask = async (taskId: string, goalId: string) => {
     try {
       await dailyTasksApi.fail(taskId);
-      toast({ title: "목표 실패", description: "30 가루가 차감되었습니다.", variant: "destructive" });
+      toast({ title: "목표 실패", description: "다음에는 더 열심히 해보세요!", variant: "destructive" });
       
       isFetching.current = false;
       loadAllData();

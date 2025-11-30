@@ -35,8 +35,9 @@ import {
   type RankingEntry,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { LineChart, Line, ResponsiveContainer } from "recharts";
+import { LineChart, Line as RechartsLine, ResponsiveContainer } from "recharts";
 
+const Line = RechartsLine as any;
 const RANKING_REWARDS: Record<number, number> = {
   1: 500,
   2: 400,
@@ -56,7 +57,6 @@ export default function Community() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // 도전방
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [challengeForm, setChallengeForm] = useState({
     title: "",
@@ -65,7 +65,6 @@ export default function Community() {
   });
   const [challenges, setChallenges] = useState<CommunityChallenge[]>([]);
 
-  // 피드
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [postContent, setPostContent] = useState("");
   const [postImage, setPostImage] = useState<File | null>(null);
@@ -83,26 +82,21 @@ export default function Community() {
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
 
-  // 랭킹
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
   const [rankingLoading, setRankingLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // 초기 로드: 피드 + 도전방
   useEffect(() => {
     loadFeed();
     loadChallenges();
   }, []);
 
-  // 랭킹 탭에 들어갔을 때만 랭킹 로드
   useEffect(() => {
     if (activeTab === "ranking") {
       if (user) setCurrentUserId(user.id);
       loadRankings();
     }
   }, [activeTab, user]);
-
-  // --------- 데이터 로딩 함수들 ---------
 
   const requireLogin = () => {
     if (!user) {
@@ -175,9 +169,6 @@ export default function Community() {
       setRankingLoading(false);
     }
   };
-
-  // --------- 액션 함수들 ---------
-
   const toggleLike = async (postId: string) => {
     if (!requireLogin()) return;
 
@@ -304,9 +295,6 @@ export default function Community() {
     if (!requireLogin()) return;
     navigate(`/chat/${roomId}`);
   };
-
-  // --------- 렌더링 ---------
-
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-6xl">
@@ -364,6 +352,7 @@ export default function Community() {
                       <DialogTitle className="font-korean text-xl">
                         도전방 만들기
                       </DialogTitle>
+                      
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                       <div className="space-y-2">
@@ -786,7 +775,6 @@ export default function Community() {
                                 }))}
                               >
                                 <Line
-                                  // @ts-ignore
                                   type="monotone"
                                   dataKey="exp"
                                   stroke={

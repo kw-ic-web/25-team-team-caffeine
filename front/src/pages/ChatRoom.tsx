@@ -7,7 +7,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, ArrowLeft, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { petsApi } from "@/lib/api";
+import { petsApi, communityApi } from "@/lib/api";
+import io, { Socket } from "socket.io-client";
 
 interface Message {
   id: string;
@@ -16,20 +17,6 @@ interface Message {
   created_at: string;
   profiles?: {
     display_name: string;
-  };
-}
-
-interface Participant {
-  id: string;
-  user_id: string;
-  profiles?: {
-    display_name: string;
-  };
-  pets?: {
-    id: string;
-    name: string;
-    level: number;
-    rarity: "common" | "rare" | "epic" | "legendary";
   };
 }
 
@@ -51,6 +38,8 @@ const rarityGradients = {
   legendary: "from-warning to-warning/70",
 };
 
+const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
 export default function ChatRoom() {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -58,191 +47,132 @@ export default function ChatRoom() {
   const { user } = useAuth();
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
   const [movingPets, setMovingPets] = useState<MovingPet[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
+  
+  const socketRef = useRef<Socket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const nowISO = () => new Date().toISOString();
-  const storageKey = `chat_messages_${roomId}`;
-
-  // 채팅방 입장 시: 걷는 펫 끄기 + 초기화
   useEffect(() => {
+    if (!user || !roomId) {
+        if(!user) navigate("/auth");
+        return;
+    }
+
+    loadChatHistory();
+    loadMyPet();
+
+    socketRef.current = io(SOCKET_URL, {
+        withCredentials: true,
+    });
+
+    socketRef.current.emit("join_room", roomId);
+    socketRef.current.on("receive_message", (msg: Message) => {
+        setMessages((prev) => [...prev, msg]);
+    });
+
     const previousState = localStorage.getItem("walkingPetsEnabled");
     localStorage.setItem("walkingPetsEnabled", "false");
     window.dispatchEvent(new Event("walkingPetsToggle"));
 
-    initializeRoom();
-
     return () => {
+      socketRef.current?.disconnect();
+      
       localStorage.setItem("walkingPetsEnabled", previousState || "true");
       window.dispatchEvent(new Event("walkingPetsToggle"));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, user]);
 
-  // 새 메시지 오면 스크롤 맨 아래로
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      setTimeout(() => {
+          if(scrollRef.current) {
+            const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+            if (scrollContainer) {
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
+          }
+      }, 100);
     }
   }, [messages]);
 
-  // 펫 움직임 애니메이션
   useEffect(() => {
     if (movingPets.length === 0 || !chatContainerRef.current) return;
-
     const interval = setInterval(() => {
       setMovingPets((prevPets) =>
         prevPets.map((pet) => {
           let newX = pet.x + pet.speedX;
           let newY = pet.y + pet.speedY;
-
           const containerRect = chatContainerRef.current?.getBoundingClientRect();
           if (!containerRect) return pet;
-
           const petSize = 32;
           const maxX = containerRect.width - petSize;
           const maxY = containerRect.height - petSize;
-
           if (newX <= 0 || newX >= maxX) {
             pet = { ...pet, speedX: -pet.speedX };
             newX = newX <= 0 ? 0 : maxX;
           }
-
           if (newY <= 0 || newY >= maxY) {
             pet = { ...pet, speedY: -pet.speedY };
             newY = newY <= 0 ? 0 : maxY;
           }
-
-          return {
-            ...pet,
-            x: newX,
-            y: newY,
-          };
+          return { ...pet, x: newX, y: newY };
         })
       );
     }, 50);
-
     return () => clearInterval(interval);
   }, [movingPets.length]);
 
-  const initializeRoom = async () => {
-    if (!user) {
-      toast({
-        title: "로그인이 필요합니다",
-        variant: "destructive",
-      });
-      navigate("/auth");
-      return;
-    }
-
-    setCurrentUserId(user.id);
-
-    await loadMessages(user);
-    await loadParticipants(user);
-  };
-
-  const loadMessages = async (currentUser: { id: string; displayName?: string | null }) => {
+  const loadChatHistory = async () => {
+    if (!roomId) return;
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) {
-        setMessages([]);
-        return;
-      }
-      const parsed: Message[] = JSON.parse(raw);
-
-      // display_name이 없는 메시지는 현재 유저 이름으로 채워줌
-      const enriched = parsed.map((m) => ({
-        ...m,
-        profiles: m.profiles ?? { display_name: currentUser.displayName ?? "모험가" },
-      }));
-
-      setMessages(enriched);
+        const history = await communityApi.getChatMessages(roomId);
+        setMessages(history);
     } catch (err) {
-      console.error("failed to load messages from localStorage", err);
-      setMessages([]);
+        console.error("채팅 내역 로드 실패", err);
+        toast({ title: "채팅 내역을 불러오지 못했습니다.", variant: "destructive" });
     }
   };
 
-  const loadParticipants = async (currentUser: { id: string; displayName?: string | null }) => {
+  const loadMyPet = async () => {
     try {
-      // 현재는 "나 혼자" + 내 메인 펫만 참가자로 표시
       const pets = await petsApi.list();
       const mainPet = pets.find((p) => p.is_main);
 
-      const baseParticipant: Participant = {
-        id: currentUser.id,
-        user_id: currentUser.id,
-        profiles: { display_name: currentUser.displayName ?? "모험가" },
-        pets: mainPet
-          ? {
-              id: mainPet.id,
-              name: mainPet.name,
-              level: mainPet.level,
-              rarity: mainPet.rarity as "common" | "rare" | "epic" | "legendary",
-            }
-          : undefined,
-      };
-
-      setParticipants([baseParticipant]);
-
       if (chatContainerRef.current && mainPet) {
         const containerRect = chatContainerRef.current.getBoundingClientRect();
-        const x = Math.random() * (containerRect.width - 100) + 50;
-        const y = Math.random() * (containerRect.height - 100) + 50;
-        const speedX = (Math.random() - 0.5) * 3;
-        const speedY = (Math.random() - 0.5) * 3;
-
-        setMovingPets([
-          {
+        setMovingPets([{
             id: mainPet.id,
             name: mainPet.name,
             level: mainPet.level,
-            rarity: mainPet.rarity as "common" | "rare" | "epic" | "legendary",
-            x,
-            y,
-            speedX,
-            speedY,
-          },
-        ]);
+            rarity: mainPet.rarity as any,
+            x: Math.random() * (containerRect.width - 100) + 50,
+            y: Math.random() * (containerRect.height - 100) + 50,
+            speedX: (Math.random() - 0.5) * 3,
+            speedY: (Math.random() - 0.5) * 3,
+        }]);
       } else {
         setMovingPets([]);
       }
     } catch (err) {
-      console.error("failed to load participants / pets", err);
-      setParticipants([]);
-      setMovingPets([]);
+      console.error("펫 로드 실패", err);
     }
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !currentUserId || !user) return;
+    if (!newMessage.trim() || !user || !roomId) return;
 
-    const out: Message = {
-      id: crypto.randomUUID(),
-      user_id: currentUserId,
-      message: newMessage.trim(),
-      created_at: nowISO(),
-      profiles: {
-        display_name: user.displayName ?? "모험가",
-      },
+    const messageData = {
+        roomId,
+        userId: user.id,
+        message: newMessage.trim(),
+        profiles: {
+            display_name: user.displayName ?? "모험가"
+        }
     };
 
-    setMessages((prev) => {
-      const next = [...prev, out];
-      // localStorage에 저장 (현재는 로컬 전용 채팅)
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch (err) {
-        console.error("failed to save messages to localStorage", err);
-      }
-      return next;
-    });
-
+    socketRef.current?.emit("send_message", messageData);
     setNewMessage("");
   };
 
@@ -272,50 +202,35 @@ export default function ChatRoom() {
           <div>
             <h1 className="font-pixel text-xl text-foreground">채팅방</h1>
             <p className="font-korean text-sm text-muted-foreground">
-              {participants.length}명 참가중
+              실시간 대화 중
             </p>
           </div>
         </div>
       </div>
-
-      <div className="flex-1 relative overflow-hidden" ref={chatContainerRef}>
+      <div className="flex-1 relative overflow-hidden bg-background/50" ref={chatContainerRef}>
         {movingPets.map((pet) => (
           <div
             key={pet.id}
-            className="absolute z-10"
-            style={{ left: `${pet.x}px`, top: `${pet.y}px` }}
+            className="absolute z-0 opacity-30 pointer-events-none"
+            style={{ left: `${pet.x}px`, top: `${pet.y}px`, transition: 'left 0.05s linear, top 0.05s linear' }}
           >
             <div className="relative">
-              <div
-                className={`w-8 h-8 bg-gradient-to-br ${
-                  rarityGradients[pet.rarity]
-                } rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}
-              >
-                <Heart className="w-4 h-4 text-primary-foreground animate-pulse-glow" />
-              </div>
-              <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                <div className="bg-card border border-primary px-2 py-0.5 rounded-sm shadow-neon text-[10px] font-korean">
-                  {pet.name}
-                </div>
+              <div className={`w-8 h-8 bg-gradient-to-br ${rarityGradients[pet.rarity]} rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}>
+                <Heart className="w-4 h-4 text-primary-foreground" />
               </div>
             </div>
           </div>
         ))}
-
-        <ScrollArea className="h-full p-4" ref={scrollRef}>
+        <ScrollArea className="h-full p-4 z-10 relative" ref={scrollRef}>
           <div className="container mx-auto max-w-6xl space-y-4 pb-4">
             {messages.map((msg) => {
-              const isMyMessage = msg.user_id === currentUserId;
+              const isMyMessage = msg.user_id === user?.id;
               return (
                 <div
                   key={msg.id}
                   className={`flex ${isMyMessage ? "justify-end" : "justify-start"}`}
                 >
-                  <div
-                    className={`flex gap-2 max-w-[70%] ${
-                      isMyMessage ? "flex-row-reverse" : "flex-row"
-                    }`}
-                  >
+                  <div className={`flex gap-2 max-w-[70%] ${isMyMessage ? "flex-row-reverse" : "flex-row"}`}>
                     {!isMyMessage && (
                       <Avatar className="w-8 h-8 border-2 border-primary flex-shrink-0">
                         <AvatarFallback className="bg-gradient-primary text-primary-foreground font-pixel text-xs">
@@ -323,26 +238,22 @@ export default function ChatRoom() {
                         </AvatarFallback>
                       </Avatar>
                     )}
-                    <div
-                      className={`flex flex-col ${
-                        isMyMessage ? "items-end" : "items-start"
-                      }`}
-                    >
+                    <div className={`flex flex-col ${isMyMessage ? "items-end" : "items-start"}`}>
                       {!isMyMessage && (
                         <span className="font-korean text-xs text-muted-foreground mb-1 px-2">
                           {msg.profiles?.display_name || "알 수 없음"}
                         </span>
                       )}
                       <div
-                        className={`px-4 py-2 rounded-lg ${
+                        className={`px-4 py-2 rounded-lg text-sm font-korean break-all ${
                           isMyMessage
                             ? "bg-primary text-primary-foreground"
                             : "bg-card border-2 border-border"
                         }`}
                       >
-                        <p className="font-korean text-sm">{msg.message}</p>
+                        {msg.message}
                       </div>
-                      <span className="font-korean text-xs text-muted-foreground mt-1 px-2">
+                      <span className="font-korean text-[10px] text-muted-foreground mt-1 px-1">
                         {formatTime(msg.created_at)}
                       </span>
                     </div>
@@ -353,7 +264,6 @@ export default function ChatRoom() {
           </div>
         </ScrollArea>
       </div>
-
       <div className="bg-card border-t-2 border-border p-4">
         <div className="container mx-auto max-w-6xl flex gap-2">
           <Input

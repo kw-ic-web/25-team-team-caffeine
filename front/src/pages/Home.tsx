@@ -1,6 +1,6 @@
 import { useState, useEffect, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -15,8 +15,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-// ✅ dailyTasksApi와 localYMD 추가
-import { goalsApi, petsApi, dailyTasksApi, type Goal } from "@/lib/api";
+import { goalsApi, petsApi, dailyTasksApi, communityApi, type Goal } from "@/lib/api";
 import { localYMD } from "@/lib/date";
 
 import Pet1Img from "@/petimg/Pet1.png";
@@ -30,7 +29,6 @@ type StatCardData = {
   color: string;
 };
 
-// Goals.tsx와 동일한 구조
 type DailyTask = {
   id: string;
   goal_id: string;
@@ -71,7 +69,6 @@ export default function Home() {
   const [todayTasks, setTodayTasks] = useState<DailyTask[]>([]);
   const [todayProgress, setTodayProgress] = useState<number>(0);
   
-  // 연속 달성일은 추후 백엔드 연동 필요 (현재는 0으로 표시)
   const [streakDays, setStreakDays] = useState<number>(0); 
 
   const [petsTop3, setPetsTop3] = useState<PetPreview[]>([]);
@@ -102,16 +99,15 @@ export default function Home() {
     try {
       const todayStr = localYMD();
 
-      // ✅ 1. Goals(통계용), Pets(펫용), DailyTasks(오늘일정용) 병렬 호출
-      const [goalsRes, petsRes, tasksRaw] = await Promise.all([
+      const [goalsRes, petsRes, tasksRaw, myRooms] = await Promise.all([
         goalsApi.list(),
         petsApi.list(),
-        dailyTasksApi.listToday(todayStr), // 백엔드에서 필터링된 진짜 '오늘 할 일'
+        dailyTasksApi.listToday(todayStr),
+        communityApi.getMyChallenges(),
       ]);
 
       setUserName(displayName || "모험가");
 
-      // --- 상단 통계 (전체 목표 기준) ---
       const allGoals: Goal[] = goalsRes || [];
       const completedGoalsCount = allGoals.filter((g) => g.completed).length;
       const activeGoalsCount = allGoals.filter((g) => !g.completed).length;
@@ -137,17 +133,14 @@ export default function Home() {
         },
       ]);
 
-      // --- 오늘의 할 일 (Goals.tsx와 동일한 데이터 사용) ---
       const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
       setTodayTasks(tasks);
 
-      // 진행률 계산
       const totalToday = tasks.length;
       const completedToday = tasks.filter((t) => t.completed).length;
       const pct = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
       setTodayProgress(pct);
 
-      // --- 펫 미리보기 ---
       const petList = petsRes || [];
       const mainPet = petList.find((p: any) => p.is_main);
       const othersSorted = petList
@@ -169,7 +162,7 @@ export default function Home() {
         }))
       );
 
-      setRooms([]); // 도전방 기능 추후 구현
+      setRooms(myRooms || []);
 
     } catch (err) {
       console.error("Failed to load dashboard:", err);
@@ -216,8 +209,6 @@ export default function Home() {
     </div>
   );
 }
-
-// ... (하단 컴포넌트들은 디자인 요소이므로 그대로 유지)
 
 function GuestLanding({ stats }: { stats: StatCardData[] }) {
   const navigate = useNavigate();
@@ -383,7 +374,6 @@ function TodayTasksCard({
   const statusText = (t: DailyTask) =>
     t.completed ? "완료" : t.failed ? "실패" : "진행 중";
 
-  // 정렬: 완료된 것을 아래로, 진행 중인 것을 위로
   const sortedTasks = [...tasks].sort((a, b) => {
       const aDone = a.completed || a.failed;
       const bDone = b.completed || b.failed;
@@ -513,6 +503,19 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
 
 function ActiveRooms({ rooms }: { rooms: RoomSummary[] }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleEnterRoom = (room: RoomSummary) => {
+    if (room.daysLeft < 0) {
+      toast({
+        title: "종료된 도전방",
+        description: "이미 마감된 도전방에는 입장할 수 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    navigate(`/chat/${room.id}`);
+  };
 
   return (
     <Card className="bg-card/50 border-2 border-border">
@@ -530,21 +533,32 @@ function ActiveRooms({ rooms }: { rooms: RoomSummary[] }) {
             {rooms.map((room) => (
               <div
                 key={room.id}
-                className="flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all cursor-pointer"
-                onClick={() => navigate(`/rooms/${room.id}`)}
+                className={cn(
+                  "flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border transition-all cursor-pointer",
+                  room.daysLeft < 0 
+                    ? "opacity-60 cursor-not-allowed" 
+                    : "hover:border-primary"
+                )}
+                onClick={() => handleEnterRoom(room)}
               >
                 <div>
                   <div className="font-korean text-sm text-foreground">
                     {room.title}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    D-{room.daysLeft} · {room.memberCount}명 참여 중
+                    {room.daysLeft < 0 
+                      ? <span className="text-destructive font-bold">종료됨</span> 
+                      : `D-${room.daysLeft}`} · {room.memberCount}명 참여 중
                   </div>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
                   className="font-korean text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEnterRoom(room);
+                  }}
                 >
                   입장
                 </Button>
