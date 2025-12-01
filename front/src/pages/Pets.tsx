@@ -73,7 +73,10 @@ export default function Pets() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // ✅ PetContext에서 mainPet, setMainPet 가져오기
+
+  
+// ✅ PetContext에서 mainPet, setMainPet 가져오기
+
   const { setMainPet } = usePet();
 
   useEffect(() => {
@@ -150,13 +153,9 @@ export default function Pets() {
 
     const currentMain = pets.find((p) => p.is_main);
 
-    if (
-      currentMain &&
-      !canChangeMainPet((currentMain as Pet).last_main_change ?? null)
+    if (currentMain && !canChangeMainPet((currentMain as Pet).last_main_change ?? null)
     ) {
-      const timeLeft = getTimeUntilChange(
-        (currentMain as Pet).last_main_change ?? null
-      );
+      const timeLeft = getTimeUntilChange((currentMain as Pet).last_main_change ?? null);
       toast({
         title: "메인 펫을 변경할 수 없습니다",
         description: `${timeLeft} 후에 다시 시도해주세요.`,
@@ -170,14 +169,21 @@ export default function Pets() {
 
       if (currentMain) {
         await petsApi.update(currentMain.id, {
-          is_main: false as any,
+          is_main: false,
         });
       }
 
       await petsApi.update(id, {
-        is_main: true as any,
-        last_main_change: new Date().toISOString() as any,
+        is_main: true,
+        last_main_change: new Date().toISOString(),
       });
+
+      
+
+
+const { name, image } = getRandomPetName();
+
+
 
       // ✅ PetContext 쪽 메인 펫 상태도 갱신
       const newMain = pets.find((pet) => pet.id === id);
@@ -206,9 +212,9 @@ export default function Pets() {
   const getRarityByProbability = (): PetRarity => {
     const rand = Math.random() * 100;
 
-    if (rand < 1) return "legendary";
-    if (rand < 10) return "epic";
-    if (rand < 32) return "rare";
+    if (rand < 4) return "legendary";
+    if (rand < 7) return "epic";
+    if (rand < 9) return "rare";
     return "common";
   };
 
@@ -220,7 +226,7 @@ export default function Pets() {
     } else if (pet.stars === 5) {
       imagePrefix = "worker_";
     }
-    return `/petimg/${imagePrefix}${pet.name.toLowerCase()}.png`;
+    return `@/data/petimg/${imagePrefix}${pet.name.toLowerCase()}.png`;
   };
 
   const PetComponent = () => {
@@ -232,6 +238,22 @@ export default function Pets() {
       </div>
     );
   };
+
+  
+
+  const hatImages = [
+    { name: "곰", image: "hat_bear.png" },
+    { name: "고양이", image: "hat_cat.png" },
+    { name: "개", image: "hat_dog.png" },
+    { name: "여우", image: "hat_fox.png" },
+    { name: "도치", image: "hat_hedgehog.png" },
+    { name: "코알라", image: "hat_koala.png" },
+    { name: "수달", image: "hat_otter.png" },
+    { name: "판다", image: "hat_panda.png" },
+    { name: "쿼카", image: "hat_quokka.png" },
+    { name: "토끼", image: "hat_rabbit.png" },
+  ];
+
 
   const createPet = async () => {
     const cost = 500;
@@ -253,33 +275,22 @@ export default function Pets() {
       return;
     }
 
-  const hatImages = [
-    "bear",
-    "cat",
-    "dog",
-    "fox",
-    "hedgehog",
-    "koala",
-    "otter",
-    "panda",
-    "quokka",
-    "rabbit",
-  ];
-
-    const randomAnimal = hatImages[Math.floor(Math.random() * hatImages.length)];
-    const avatarUrl = `/petimg/hat_${randomAnimal}.png`; 
-    const rarity = getRarityByProbability();
-    const name = getRandomPetName();
-
     setLoading(true);
 
+    const { name, image } = getRandomPetName();  // name과 image 값을 먼저 가져옵니다.
+    const avatarUrl = `@/data/petimg/${image}`;  // 이후 avatarUrl을 설정합니다.
 
+    const rarity = getRarityByProbability();  // 랜덤 확률로 rarity 설정
 
     try {
+      // 1) Create the pet with the image URL
       await petsApi.create({ name, rarity, avatar_url: avatarUrl });
+
+      // 2) Deduct powder
       const res = await powderApi.update(-cost);
       setPowder(res.amount);
 
+      // 3) Display the pet creation animation
       setRevealPet({ name, rarity });
       setShowReveal(true);
 
@@ -296,29 +307,31 @@ export default function Pets() {
     }
   };
 
-  const handleRevealComplete = () => {
-    setShowReveal(false);
-    setRevealPet(null);
-  };
+    const handleRevealComplete = () => {
+      setShowReveal(false);
+      setRevealPet(null);
+    };
 
-  const updatePetName = async () => {
-    if (!editingPet || !editName.trim()) return;
+    const updatePetName = async () => {
+      if (!editingPet || !editName.trim()) return;
 
-    try {
-      await petsApi.update(editingPet.id, { name: editName });
-      toast({ title: "이름 변경 완료!" });
-      setEditingPet(null);
-      setEditName("");
-      await loadPets();
-    } catch (error: any) {
-      console.error(error);
-      toast({
-        title: "오류 발생",
-        description: error.message ?? "이름 변경 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    }
-  };
+      try {
+        await petsApi.update(editingPet.id, { name: editName });
+        toast({ title: "이름 변경 완료!" });
+        setEditingPet(null);
+        setEditName("");
+        await loadPets();
+      } catch (error: any) {
+        console.error(error);
+        toast({
+          title: "오류 발생",
+          description: error.message ?? "이름 변경 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+    };
+
+
 
   const upgradePet = async () => {
     if (!selectedPet) return;

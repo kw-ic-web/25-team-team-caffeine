@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import _React, { createContext, useContext, useState, ReactNode } from "react";
 
 // 펫 타입 정의
 interface Pet {
