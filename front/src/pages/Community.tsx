@@ -243,7 +243,7 @@ export default function Community() {
 
     try {
       const { id } = await communityApi.createChallenge({
-        title: challengeForm.title,
+        name: challengeForm.title,
         category: challengeForm.category,
         deadline: challengeForm.deadline || null,
       });
@@ -436,19 +436,17 @@ export default function Community() {
                     style={{ animationDelay: `${i * 50}ms` }}
                   >
                     <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="font-korean text-lg mb-2">
-                            {challenge.name}
-                          </CardTitle>
-                          {challenge.category && (
-                            <div className="inline-block px-2 py-1 bg-primary/20 rounded-sm border border-primary">
-                              <span className="font-korean text-xs text-primary">
-                                {challenge.category}
-                              </span>
-                            </div>
-                          )}
+                      <div className="flex flex-col gap-2">
+                        <div className="text-xl font-bold text-foreground break-words font-korean">
+                          {challenge.name || "제목 없음"}
                         </div>
+                        {challenge.category && (
+                          <div className="self-start inline-block px-2 py-1 bg-primary/10 rounded-sm border border-primary/50">
+                            <span className="font-korean text-xs text-primary font-medium">
+                              {challenge.category}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </CardHeader>
                     <CardContent>

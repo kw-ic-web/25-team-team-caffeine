@@ -502,9 +502,14 @@ export default function Goals() {
                       id="difficulty"
                       type="number"
                       min="1"
-                      max="5"
+                      max="10"
                       value={newGoalDifficulty}
-                      onChange={(e) => setNewGoalDifficulty(Number(e.target.value))}
+                      onChange={(e) => {
+                        let val = Number(e.target.value);
+                        if (val > 10) val = 10;
+                        if (val < 1) val = 1;
+                        setNewGoalDifficulty(val);
+                      }}
                     />
                     <div className="text-xs text-muted-foreground mt-1 font-korean">난이도 1당 +50 가루</div>
                   </div>
@@ -586,7 +591,6 @@ export default function Goals() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-          {/* 전체 일정 */}
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-pixel text-xl text-foreground">전체 일정</h2>
