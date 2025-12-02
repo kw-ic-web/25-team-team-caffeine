@@ -195,7 +195,7 @@ export const petsApi = {
   list() {
     return request<Pet[]>("/api/pets", {}, true);
   },
-  create(payload: { name: string; rarity?: string; avatar_url: string }) { 
+  create(payload: { name: string; rarity?: string }) {
     return request<Pet>(
       "/api/pets",
       { method: "POST", body: JSON.stringify(payload) },
