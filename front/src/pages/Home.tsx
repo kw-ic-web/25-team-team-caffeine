@@ -29,10 +29,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { goalsApi, petsApi, dailyTasksApi, communityApi, usersApi, type Goal } from "@/lib/api";
 import { localYMD } from "@/lib/date";
+import { usePet } from "@/contexts/PetContext.tsx";
 
-import Pet1Img from "@/petimg/Pet1.png";
-import Pet2Img from "@/petimg/Pet2.png";
-import Pet3Img from "@/petimg/Pet3.png";
 
 type StatCardData = {
   label: string;
@@ -65,6 +63,38 @@ type RoomSummary = {
   memberCount: number;
 };
 
+function startOfTodayLocal(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function getRawDueField(g: any): any {
+  return (
+    g?.due_date ??
+    g?.due_at ??
+    g?.deadline ??
+    g?.end_date ??
+    g?.end_at ??
+    null
+  );
+}
+
+function parseDueAsLocalDate(raw: any): Date | null {
+  if (!raw) return null;
+  if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, d] = raw.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function isExpiredBeforeToday(g: any): boolean {
+  const due = parseDueAsLocalDate(getRawDueField(g));
+  if (!due) return false;
+  return due.getTime() < startOfTodayLocal().getTime();
+}
+
 const INITIAL_STATS: StatCardData[] = [
   { label: "달성한 목표", value: 0, icon: Target, color: "text-success" },
   { label: "나의 펫", value: 0, icon: Heart, color: "text-accent" },
@@ -89,6 +119,8 @@ export default function Home() {
 
   const navigate = useNavigate();
 
+
+  
   useEffect(() => {
     if (authLoading) return;
 
@@ -174,6 +206,31 @@ export default function Home() {
           experience: p.experience,
         }))
       );
+
+      const Home = () => {
+      const { mainPet } = usePet(); 
+
+      if (!mainPet) {
+        return <div>메인 펫이 설정되지 않았습니다.</div>; 
+      }
+
+      const petImage = mainPet.avatar_url && mainPet.avatar_url.trim() !== ""
+        ? mainPet.avatar_url
+        : null; 
+
+        return (
+      <div>
+        <h1>나의 메인 펫</h1>
+        {petImage && (
+          <img
+            src={petImage}
+            alt={mainPet.name || "pet"}
+            className="w-20 h-21 object-contain"
+          />
+        )}
+      </div>
+    );
+  };  
 
       setRooms(myRooms || []);
 
@@ -539,7 +596,7 @@ function TodayTasksCard({
                   {t.goal?.title ?? "(제목 없음)"}
                 </span>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                   {statusText(t)}
+                    {statusText(t)}
                 </span>
               </button>
             ))
@@ -559,6 +616,24 @@ function TodayTasksCard({
 
 function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
   const navigate = useNavigate();
+
+  const sortedPets = [...pets].sort((a, b) => {
+    if (a.is_main && !b.is_main) return -1;
+    if (!a.is_main && b.is_main) return 1;
+    return 0;
+});
+    // 2) 이미지 로딩 함수 (Pets.tsx에서 쓰는 방식과 통일)
+  const getPetImage = (avatar_url: string | null | undefined) => {
+    if (!avatar_url) return "/public/img/hat_bear.png";
+
+    // avatar_url이 "/public/img/hat_bear.png" 형태일 수도 있고
+    // DB에는 "hat_bear.png"만 들어있을 수도 있으므로 보정
+    if (avatar_url.startsWith("/public/img/")) return avatar_url;
+
+    // 파일명만 들어온 경우
+    return `/public/img/${avatar_url.split("/").pop()}`;
+  };
+
 
   return (
     <Card className="bg-card/50 border-2 border-border">
@@ -582,15 +657,10 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
                 )}
               >
                 <img
-                  src={
-                    pet.avatar_url && pet.avatar_url.trim() !== ""
-                      ? pet.avatar_url
-                      : Pet1Img
-                  }
+                  src={getPetImage(pet.avatar_url)}
                   alt={pet.name || "pet"}
                   className="w-16 h-16 object-contain"
                 />
-
                 {pet.is_main && (
                   <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground font-pixel text-[10px] rounded-sm">
                     MAIN
@@ -697,6 +767,41 @@ function DashboardSkeleton() {
               <div className="h-4 w-24 bg-muted rounded mx-auto" />
             </div>
           ))}
+        </div>
+        
+        <div className="text-center mb-16">
+          <div className="h-10 w-48 bg-muted rounded-lg mx-auto" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="bg-card/50 border-2 border-border rounded-lg p-6"
+            >
+              <div className="h-5 w-24 bg-muted rounded mb-4" />
+              <div className="space-y-3">
+                {[0, 1, 2].map((j) => (
+                  <div
+                    key={j}
+                    className="h-10 bg-muted/60 rounded border border-border"
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 bg-card/50 border-2 border-border rounded-lg p-6">
+          <div className="h-5 w-32 bg-muted rounded mb-4" />
+          <div className="space-y-3">
+            {[0, 1].map((j) => (
+              <div
+                key={j}
+                className="h-12 bg-muted/60 rounded border border-border"
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
