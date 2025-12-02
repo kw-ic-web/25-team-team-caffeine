@@ -15,7 +15,6 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-// Community
 export interface CommunityPost {
   id: string;
   user_id: string;
@@ -82,7 +81,6 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-// ===== Auth =====
 interface AuthResponse {
   token: string;
   user: User;
@@ -103,7 +101,6 @@ export const authApi = {
     });
   },
 
-  // ✅ Google OAuth용 – 이메일/이름/Google ID 받아서 로그인
   googleLogin(profile: {
     email: string;
     displayName?: string;
@@ -120,7 +117,6 @@ export const authApi = {
   },
 };
 
-// ===== Goals =====
 export interface Goal {
   id: string;
   title: string;
@@ -167,18 +163,17 @@ export const goalsApi = {
   },
 };
 
-// ===== Pets =====
 export type PetRarity = "common" | "rare" | "epic" | "legendary";
 
 export interface Pet {
   id: string;
   name: string;
   level: number;
-  rarity: PetRarity;              // ⬅ string → PetRarity
+  rarity: PetRarity;
   experience: number;
   stars: number;
   is_main: boolean;
-  last_main_change?: string | null;  // ⬅ 메인 변경 시간 (옵션)
+  last_main_change?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -210,7 +205,6 @@ export const petsApi = {
   },
 };
 
-// ===== Powder =====
 export const powderApi = {
   get() {
     return request<{ amount: number }>("/api/powder", {}, true);
@@ -224,7 +218,6 @@ export const powderApi = {
   },
 };
 
-// ===== Calendar =====
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -268,7 +261,6 @@ export const calendarApi = {
 };
 
 export const communityApi = {
-  // 피드(게시글 + 좋아요/댓글 카운트 + 내가 좋아요한 글)
   async getFeed() {
     return request<{
       posts: CommunityPost[];
@@ -309,7 +301,6 @@ export const communityApi = {
   },
 
   async createPost(content: string, file?: File | null) {
-    // 이미지까지 같이 보내려면 FormData 사용
     const formData = new FormData();
     formData.append("content", content);
     if (file) {
@@ -361,22 +352,35 @@ export const communityApi = {
       true
     );
   },
+
+  async getMyChallenges() {
+    return request<{
+      id: string;
+      title: string;
+      daysLeft: number;
+      memberCount: number;
+    }[]>("/api/community/my-challenges", {}, true);
+  },
+
+  async getChatMessages(roomId: string) {
+    return request<any[]>(`/api/community/rooms/${roomId}/messages`, {}, true);
+  }
 };
 
-// ===== Daily Tasks =====
 export interface DailyTask {
   id: string;
   goal_id: string;
   task_date: string;
   completed: boolean;
   failed: boolean;
-  goal?: Goal; // 위에서 정의한 Goal 타입이 있다고 가정
+  goal?: Goal;
 }
 
 export const dailyTasksApi = {
-  listToday() {
+  listToday(date?: string) {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
     return request<DailyTask[]>(
-      "/api/daily-tasks/today",
+      `/api/daily-tasks/today${qs}`,
       {},
       true
     );
