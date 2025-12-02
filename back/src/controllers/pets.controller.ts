@@ -1,4 +1,5 @@
 import type { Response } from "express";
+
 import { pool } from "../db";
 import type { AuthedRequest } from "../middleware/auth";
 
@@ -28,7 +29,7 @@ export const createPet = async (req: AuthedRequest, res: Response) => {
       return res.status(401).json({ message: "인증 필요" });
     }
 
-    const { name, rarity, avatar_url } = req.body;
+    const { name, rarity } = req.body;
 
     if (!name) {
       return res.status(400).json({ message: "name은 필수입니다." });
@@ -37,9 +38,9 @@ export const createPet = async (req: AuthedRequest, res: Response) => {
     const petRarity = rarity ?? "common";
 
     const [result] = await pool.execute(
-      `INSERT INTO pets (user_id, name, rarity, avatar_url)
-       VALUES (?, ?, ?, ?)`,
-      [req.userId, name, petRarity, avatar_url ?? null]
+      `INSERT INTO pets (user_id, name, rarity)
+       VALUES (?, ?, ?)`,
+      [req.userId, name, petRarity]
     );
 
     const insertResult = result as any;
@@ -48,7 +49,6 @@ export const createPet = async (req: AuthedRequest, res: Response) => {
       id: insertResult.insertId ?? null,
       name,
       rarity: petRarity,
-      avatar_url: avatar_url ?? null,
     });
   } catch (err) {
     console.error(err);
@@ -64,18 +64,7 @@ export const updatePet = async (req: AuthedRequest, res: Response) => {
     }
 
     const petId = req.params.id;
-
-    const {
-      name,
-      level,
-      rarity,
-      experience,
-      stars,
-      isMain,
-      is_main,        // 혹시 프론트에서 이렇게 보내도 받게
-      avatar_url,
-      // last_main_change 는 이제 바디에서 안 받는다
-    } = req.body;
+    const { name, level, rarity, experience, stars, isMain } = req.body;
 
     const fields: string[] = [];
     const values: any[] = [];
@@ -100,23 +89,9 @@ export const updatePet = async (req: AuthedRequest, res: Response) => {
       fields.push("stars = ?");
       values.push(stars);
     }
-    if (avatar_url !== undefined) {
-      fields.push("avatar_url = ?");
-      values.push(avatar_url);
-    }
-
-    // 🔥 메인 여부 처리
-    const mainFlag = isMain ?? is_main;
-    if (mainFlag !== undefined) {
-      // is_main 컬럼 갱신
+    if (isMain !== undefined) {
       fields.push("is_main = ?");
-      values.push(mainFlag ? 1 : 0);
-
-      // 메인으로 설정하는 경우에만 last_main_change 를 NOW()로 박음
-      if (mainFlag) {
-        fields.push("last_main_change = NOW()");
-        // NOW()는 함수라 ? 플레이스홀더 필요 없음 → values.push 안 함
-      }
+      values.push(isMain ? 1 : 0);
     }
 
     if (fields.length === 0) {
