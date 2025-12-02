@@ -51,14 +51,12 @@ export default function ChatRoom() {
   const [movingPets, setMovingPets] = useState<MovingPet[]>([]);
   const [newMessage, setNewMessage] = useState("");
   
-  // 내 메인 펫 정보를 저장할 state (ref 대신 state 사용 권장)
   const [myMainPet, setMyMainPet] = useState<any>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // 1. 초기화: 펫 정보 로드 -> 채팅 내역 로드 -> 소켓 연결 순서 보장
   useEffect(() => {
     if (!user || !roomId) {
         if(!user) navigate("/auth");
@@ -67,21 +65,14 @@ export default function ChatRoom() {
 
     const init = async () => {
         try {
-            // [수정] 펫 목록을 가져옵니다.
             const pets = await petsApi.list();
             
-            // [핵심 수정 로직]
-            // 1순위: 메인 펫 (is_main === true)
-            // 2순위: 메인 펫이 없다면 첫 번째 펫 (pets[0])
             const targetPet = pets.find((p) => p.is_main) || pets[0];
 
-            setMyMainPet(targetPet || null); // 상태 저장
-
-            // 2. 채팅 내역 로드
+            setMyMainPet(targetPet || null);
             const history = await communityApi.getChatMessages(roomId);
             setMessages(history);
 
-            // 3. 소켓 연결 (찾아낸 펫 정보를 인자로 넘김)
             connectSocket(targetPet);
             
         } catch (err) {
@@ -90,8 +81,6 @@ export default function ChatRoom() {
     };
 
     init();
-
-    // 펫 산책 모드 잠시 끄기
     const previousState = localStorage.getItem("walkingPetsEnabled");
     localStorage.setItem("walkingPetsEnabled", "false");
     window.dispatchEvent(new Event("walkingPetsToggle"));
@@ -103,10 +92,7 @@ export default function ChatRoom() {
       localStorage.setItem("walkingPetsEnabled", previousState || "true");
       window.dispatchEvent(new Event("walkingPetsToggle"));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, user]);
-
-  // 스크롤 자동 이동
   useEffect(() => {
     if (scrollRef.current) {
       setTimeout(() => {
@@ -120,7 +106,6 @@ export default function ChatRoom() {
     }
   }, [messages]);
 
-  // 펫 움직임 애니메이션
   useEffect(() => {
     if (movingPets.length === 0 || !chatContainerRef.current) return;
     
@@ -160,11 +145,19 @@ export default function ChatRoom() {
         transports: ["websocket"],
     });
 
-    // [중요] 가져온 펫 정보를 사용해 입장 요청
+    socketRef.current.on("click_response", (res: { success: boolean; message: string }) => {
+        toast({
+            title: res.success ? "쓰다듬기 성공! 👋" : "이미 쓰다듬었어요",
+            description: res.message,
+            variant: res.success ? "default" : "destructive",
+            className: res.success ? "bg-primary text-primary-foreground border-none" : ""
+        });
+    });
+
     const joinData = {
         roomId,
         user: { id: user?.id, displayName: user?.displayName },
-        pet: petInfo // null이어도 보냄 (백엔드에서 처리)
+        pet: petInfo
     };
 
     socketRef.current.emit("join_room", joinData);
@@ -173,7 +166,6 @@ export default function ChatRoom() {
         setMessages((prev) => [...prev, msg]);
     });
 
-    // 현재 방의 유저/펫 리스트 수신
     socketRef.current.on("room_users", (users: any[]) => {
         if (!chatContainerRef.current) return;
         const containerRect = chatContainerRef.current.getBoundingClientRect();
@@ -224,8 +216,6 @@ export default function ChatRoom() {
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !user || !roomId) return;
-
-    // [수정] 상태값(myMainPet)을 직접 사용
     const myPetId = myMainPet?.id;
 
     const messageData = {
@@ -251,11 +241,11 @@ export default function ChatRoom() {
 
   const handlePetClick = (pet: MovingPet) => {
       if (pet.userId === user?.id) return;
-
-      toast({
-          title: "펫 쓰다듬기! 👋",
-          description: `${pet.name}의 경험치가 올랐습니다!`,
-          className: "bg-primary text-primary-foreground border-none"
+      
+      socketRef.current?.emit("click_pet", { 
+          petId: pet.id, 
+          fromUserId: user?.id,
+          petName: pet.name 
       });
   };
 
@@ -269,8 +259,8 @@ export default function ChatRoom() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="bg-card border-b-2 border-border p-4">
+    <div className="h-[100dvh] flex flex-col overflow-hidden">
+      <div className="bg-card border-b-2 border-border p-4 flex-none">
         <div className="container mx-auto max-w-6xl flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/community")}>
             <ArrowLeft className="w-5 h-5" />
@@ -284,7 +274,7 @@ export default function ChatRoom() {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden bg-background/50" ref={chatContainerRef}>
+      <div className="flex-1 relative overflow-hidden bg-background/50 min-h-0" ref={chatContainerRef}>
         {movingPets.map((pet) => {
             const isMyPet = pet.userId === user?.id;
             return (
@@ -359,7 +349,8 @@ export default function ChatRoom() {
           </div>
         </ScrollArea>
       </div>
-      <div className="bg-card border-t-2 border-border p-4">
+
+      <div className="bg-card border-t-2 border-border p-4 flex-none">
         <div className="container mx-auto max-w-6xl flex gap-2">
           <Input
             value={newMessage}

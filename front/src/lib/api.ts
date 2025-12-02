@@ -344,7 +344,7 @@ export const communityApi = {
   },
 
   async createChallenge(payload: {
-    title: string;
+    name: string;
     category: string;
     deadline?: string | null;
   }) {
