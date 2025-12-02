@@ -5,8 +5,8 @@ import {
   createGoal,
   updateGoal,
   deleteGoal,
-} from "../controllers/goals.controller";
-import { requireAuth } from "../middleware/auth";
+} from "../controllers/goals.controller.js";
+import { requireAuth } from "../middleware/auth.js";
 
 export const router = Router();
 

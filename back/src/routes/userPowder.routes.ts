@@ -1,7 +1,7 @@
 import { Router } from "express";
 
-import { getMyPowder, updateMyPowder } from "../controllers/userPowder.controller";
-import { requireAuth } from "../middleware/auth";
+import { getMyPowder, updateMyPowder } from "../controllers/userPowder.controller.js";
+import { requireAuth } from "../middleware/auth.js";
 
 export const router = Router();
 

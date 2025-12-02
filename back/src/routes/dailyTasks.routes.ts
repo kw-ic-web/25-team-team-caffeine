@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth.js";
 
 import {
   getTodayDailyTasks,
   completeDailyTask,
   failDailyTask,
-} from "../controllers/dailyTasks.controller";
+} from "../controllers/dailyTasks.controller.js";
 
 const router = Router();
 

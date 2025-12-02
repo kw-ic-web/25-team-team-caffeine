@@ -5,8 +5,8 @@ import {
   createEvent,
   updateEvent,
   deleteEvent,
-} from "../controllers/calendarEvents.controller";
-import { requireAuth } from "../middleware/auth";
+} from "../controllers/calendarEvents.controller.js";
+import { requireAuth } from "../middleware/auth.js";
 
 export const router = Router();
 

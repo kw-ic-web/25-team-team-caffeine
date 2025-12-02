@@ -1,12 +1,12 @@
 import type { Express } from "express";
-import { router as authRouter } from "./auth.routes";
-import { router as usersRouter } from "./users.routes";
-import { router as goalsRouter } from "./goals.routes";
-import { router as petsRouter } from "./pets.routes";
-import { router as userPowderRouter } from "./userPowder.routes";
-import { router as calendarEventsRouter } from "./calendarEvents.routes";
-import dailyTasksRoutes from "./dailyTasks.routes";
-import communityRouter from "./community.routes"; 
+import { router as authRouter } from "./auth.routes.js";
+import { router as usersRouter } from "./users.routes.js";
+import { router as goalsRouter } from "./goals.routes.js";
+import { router as petsRouter } from "./pets.routes.js";
+import { router as userPowderRouter } from "./userPowder.routes.js";
+import { router as calendarEventsRouter } from "./calendarEvents.routes.js";
+import dailyTasksRoutes from "./dailyTasks.routes.js";
+import communityRouter from "./community.routes.js"; 
 import express from "express";
 import path from "path";
 

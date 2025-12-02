@@ -1,7 +1,7 @@
 import type { Response } from "express";
 
-import { pool } from "../db";
-import type { AuthedRequest } from "../middleware/auth";
+import { pool } from "../db.js";
+import type { AuthedRequest } from "../middleware/auth.js";
 
 // 내 일정 목록
 export const listMyEvents = async (req: AuthedRequest, res: Response) => {

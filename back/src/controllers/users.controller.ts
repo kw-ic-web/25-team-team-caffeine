@@ -1,8 +1,8 @@
 // back/src/controllers/users.controller.ts
 import type { Response } from "express";
 
-import { pool } from "../db";
-import type { AuthedRequest } from "../middleware/auth";
+import { pool } from "../db.js";
+import type { AuthedRequest } from "../middleware/auth.js";
 
 export const getCurrentUser = async (req: AuthedRequest, res: Response) => {
   try {

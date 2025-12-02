@@ -1,7 +1,7 @@
 import type { Response } from "express";
 
-import { pool } from "../db";
-import type { AuthedRequest } from "../middleware/auth";
+import { pool } from "../db.js";
+import type { AuthedRequest } from "../middleware/auth.js";
 
 // 내 파우더 조회
 export const getMyPowder = async (req: AuthedRequest, res: Response) => {

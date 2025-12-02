@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth.js";
 import multer from "multer";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
@@ -14,7 +14,7 @@ import {
   getRankings,
   getMyChallenges,
   getChatMessages
-} from "../controllers/community.controller";
+} from "../controllers/community.controller.js";
 
 // ✅ [수정] 디스크 저장소 설정 (파일을 uploads 폴더에 저장)
 const storage = multer.diskStorage({

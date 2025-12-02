@@ -1,8 +1,8 @@
 // back/src/routes/users.routes.ts
 import { Router } from "express";
 
-import { getCurrentUser, listUsers } from "../controllers/users.controller";
-import { requireAuth } from "../middleware/auth";
+import { getCurrentUser, listUsers } from "../controllers/users.controller.js";
+import { requireAuth } from "../middleware/auth.js";
 
 export const router = Router();
 

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { pool } from "../db";
+import { pool } from "../db.js";
 import { v4 as uuidv4 } from "uuid";
 
 // UUID 생성 헬퍼 함수 (라이브러리 없을 시 폴백)

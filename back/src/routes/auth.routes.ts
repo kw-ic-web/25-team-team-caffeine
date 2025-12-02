@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { handleGoogleCallback, loginUser, registerUser } from "../controllers/auth.controller";
+import { handleGoogleCallback, loginUser, registerUser } from "../controllers/auth.controller.js";
 
 export const router = Router();
 

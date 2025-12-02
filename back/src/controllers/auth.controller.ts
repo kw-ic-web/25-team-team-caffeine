@@ -3,8 +3,8 @@ import type { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-import { pool } from "../db";
-import type { JwtPayload } from "../middleware/auth";
+import { pool } from "../db.js";
+import type { JwtPayload } from "../middleware/auth.js";
 
 // =======================
 // 이메일 회원가입
