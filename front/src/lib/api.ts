@@ -186,6 +186,7 @@ export interface Pet {
   experience: number;
   stars: number;
   is_main: boolean;
+  color: string; 
   last_main_change?: string | null;
   created_at: string;
   updated_at: string;
