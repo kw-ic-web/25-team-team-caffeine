@@ -2,3 +2,4 @@
 /back/node_modules
 /back/uploads/*
 !/back/uploads/.gitkeep
+.env

@@ -174,3 +174,7 @@ const port = process.env.PORT || 4000;
 httpServer.listen(port, () => {
   log.info(`API & Socket server started on :${port}`);
 });
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", message: "Team Caffeine API is running" });
+});
