@@ -34,6 +34,7 @@ import {
 // API에서 오는 Pet 타입을 확장 (last_main_change를 프론트에서 사용)
 interface Pet extends ApiPet {
   last_main_change: string | null;
+  avatar_url?: string | null;
 }
 
 const rarityColors = {
@@ -65,6 +66,7 @@ export default function Pets() {
   const [revealPet, setRevealPet] = useState<{
     name: string;
     rarity: PetRarity;
+    avatar_url: string;
   } | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
@@ -147,67 +149,73 @@ export default function Pets() {
     return `${hoursRemaining}시간`;
   };
 
-  // ⚠️ 이름 겹치지 않게 로컬 함수 이름 변경
-  const handleSetMainPet = async (id: string) => {
-    if (!user) return;
+    const formatDateToMySQL = (date: Date) =>
+    date.toISOString().slice(0, 19).replace("T", " ");
 
-    const currentMain = pets.find((p) => p.is_main);
 
-    if (currentMain && !canChangeMainPet((currentMain as Pet).last_main_change ?? null)
-    ) {
-      const timeLeft = getTimeUntilChange((currentMain as Pet).last_main_change ?? null);
-      toast({
-        title: "메인 펫을 변경할 수 없습니다",
-        description: `${timeLeft} 후에 다시 시도해주세요.`,
-        variant: "destructive",
-      });
-      return;
-    }
+    const handleSetMainPet = async (id: string) => {
+      if (!user) return;
 
-    try {
-      setLoading(true);
+      const currentMain = pets.find((p) => p.isMain);
 
-      if (currentMain) {
-        await petsApi.update(currentMain.id, {
-          is_main: false,
+      // 24시간 쿨타임 체크
+      if (
+        currentMain &&
+        !canChangeMainPet((currentMain as Pet).last_main_change ?? null)
+      ) {
+        const timeLeft = getTimeUntilChange(
+          (currentMain as Pet).last_main_change ?? null
+        );
+        toast({
+          title: "메인 펫을 변경할 수 없습니다",
+          description: `${timeLeft} 후에 다시 시도해주세요.`,
+          variant: "destructive",
         });
+        return;
       }
 
-      await petsApi.update(id, {
-        is_main: true,
-        last_main_change: new Date().toISOString(),
-      });
+      try {
+        setLoading(true);
 
-      
+        // 1) 기존 메인 펫 해제
+        if (currentMain) {
+          await petsApi.update(currentMain.id, {
+            isMain: false, // 백엔드가 isMain 읽을 수도 있으니까
+          });
+        }
 
+        // 2) 새 메인 펫 설정 + 변경 시간 기록
+          await petsApi.update(id, {
+            isMain: true,
+            last_main_change: formatDateToMySQL(new Date()),
+          });
 
-const { name, image } = getRandomPetName();
+        // 3) 프론트 컨텍스트도 업데이트
+        const newMain = pets.find((pet) => pet.id === id);
+        if (newMain) {
+          setMainPet(newMain as any);
+        }
 
+        toast({
+          title: "메인 펫 설정 완료!",
+          description: "24시간 후에 다시 변경할 수 있습니다.",
+        });
 
-
-      // ✅ PetContext 쪽 메인 펫 상태도 갱신
-      const newMain = pets.find((pet) => pet.id === id);
-      if (newMain) {
-        setMainPet(newMain as any);
+        await loadPets();
+      } catch (error: any) {
+        console.error(error);
+        toast({
+          title: "오류 발생",
+          description:
+            error?.message ?? "메인 펫 설정 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
       }
+    };
 
-      toast({
-        title: "메인 펫 설정 완료!",
-        description: "24시간 후에 다시 변경할 수 있습니다.",
-      });
 
-      await loadPets();
-    } catch (error: any) {
-      console.error(error);
-      toast({
-        title: "오류 발생",
-        description: error.message ?? "메인 펫 설정 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getRarityByProbability = (): PetRarity => {
     const rand = Math.random() * 100;
@@ -218,25 +226,16 @@ const { name, image } = getRandomPetName();
     return "common";
   };
 
-  // (지금은 안 쓰이고 있어서 냅둬도 되고, 경고 뜨면 삭제해도 됨)
-  const getPetImage = (pet: Pet): string => {
-    let imagePrefix = "hat_";
-    if (pet.stars === 3) {
-      imagePrefix = "laptop_";
-    } else if (pet.stars === 5) {
-      imagePrefix = "worker_";
-    }
-    return `@/data/petimg/${imagePrefix}${pet.name.toLowerCase()}.png`;
-  };
+
 
   const PetComponent = () => {
-    const [currentPet, setCurrentPet] = useState<Pet>(pets[0]);
-    return (
-      <div>
-        <img src={getPetImage(currentPet)} alt={currentPet.name} className="pet-image" />
-        <button onClick={() => setCurrentPet(pets[1])}>Change Pet</button>
-      </div>
-    );
+  const [currentPet, setCurrentPet] = useState<Pet>(pets[0]);
+  return (
+    <div>
+      <img src={getPetImage(currentPet)} alt={currentPet.name} className="pet-image" />
+      <button onClick={() => setCurrentPet(pets[1])}>Change Pet</button>
+    </div>
+  );
   };
 
   
@@ -254,17 +253,16 @@ const { name, image } = getRandomPetName();
     { name: "토끼", image: "hat_rabbit.png" },
   ];
 
-
-  const createPet = async () => {
-    const cost = 500;
-    if (powder < cost) {
-      toast({
-        title: "가루가 부족합니다",
-        description: `${cost} 가루가 필요합니다.`,
-        variant: "destructive",
-      });
-      return;
-    }
+    const createPet = async () => {
+      const cost = 500;
+      if (powder < cost) {
+        toast({
+          title: "가루가 부족합니다",
+          description: `${cost} 가루가 필요합니다.`,
+          variant: "destructive",
+        });
+        return;
+      }
     if (!user) {
       toast({
         title: "로그인이 필요합니다",
@@ -274,24 +272,28 @@ const { name, image } = getRandomPetName();
       navigate("/auth");
       return;
     }
+    
+      // 1) 랜덤 이미지 하나 선택
+    const randomHat =
+      hatImages[Math.floor(Math.random() * hatImages.length)];
+
+    // getRandomPetName 이 문자열 리턴이면 이렇게
+    const {name} = getRandomPetName();
+    const rarity = getRarityByProbability();
+
+    // 2) 실제 URL (여기서 '@' 쓰면 절대 안 됨)
+    const avatarUrl = `/public/img/${randomHat.image}`;
+
+    console.log("createPet →", { name, rarity, avatarUrl });
 
     setLoading(true);
-
-    const { name, image } = getRandomPetName();  // name과 image 값을 먼저 가져옵니다.
-    const avatarUrl = `@/data/petimg/${image}`;  // 이후 avatarUrl을 설정합니다.
-
-    const rarity = getRarityByProbability();  // 랜덤 확률로 rarity 설정
-
     try {
-      // 1) Create the pet with the image URL
       await petsApi.create({ name, rarity, avatar_url: avatarUrl });
 
-      // 2) Deduct powder
       const res = await powderApi.update(-cost);
       setPowder(res.amount);
 
-      // 3) Display the pet creation animation
-      setRevealPet({ name, rarity });
+      setRevealPet({ name, rarity, avatar_url: avatarUrl });
       setShowReveal(true);
 
       await loadPets();
@@ -305,6 +307,28 @@ const { name, image } = getRandomPetName();
     } finally {
       setLoading(false);
     }
+  };
+
+
+  const getPetImage = (pet: Pet): string => {
+    // avatar_url 없으면 기본값
+    let fileName = pet.avatar_url
+      ? pet.avatar_url.split("/").pop() ?? "hat_bear.png"
+      : "hat_bear.png";
+
+    // 강화 단계에 따라 접두어 교체
+    if (pet.stars >= 5) {
+      fileName = fileName
+        .replace("hat_", "worker_")
+        .replace("laptop_", "worker_");
+    } else if (pet.stars >= 3) {
+      fileName = fileName
+        .replace("hat_", "laptop_")
+        .replace("worker_", "laptop_");
+    }
+
+    // 최종 경로
+    return `/public/img/${fileName}`;
   };
 
     const handleRevealComplete = () => {
@@ -441,12 +465,12 @@ const { name, image } = getRandomPetName();
               className={cn(
                 "relative overflow-hidden border-2 transition-all shadow-card hover:shadow-neon animate-slide-up",
                 rarityColors[pet.rarity],
-                pet.is_main &&
+                pet.isMain &&
                   "ring-2 ring-primary ring-offset-2 ring-offset-background"
               )}
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              {pet.is_main && (
+              {pet.isMain && (
                 <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-primary rounded-sm">
                   <span className="font-pixel text-xs text-primary-foreground">
                     MAIN
@@ -471,7 +495,11 @@ const { name, image } = getRandomPetName();
               >
                 <div className="relative">
                   <div className="w-32 h-32 bg-gradient-primary rounded-full flex items-center justify-center shadow-neon animate-float">
-                    <Heart className="w-16 h-16 text-primary-foreground" />
+                    <img
+                      src={getPetImage(pet)}
+                      alt={pet.name}
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-card/90 rounded-full border border-border">
                     <span className="font-pixel text-xs">Lv.{pet.level}</span>
@@ -522,7 +550,7 @@ const { name, image } = getRandomPetName();
                 </div>
 
                 <div className="flex gap-2">
-                  {!pet.is_main && (
+                  {!pet.isMain && (
                     <Button
                       variant="neon"
                       size="sm"
@@ -530,7 +558,7 @@ const { name, image } = getRandomPetName();
                       className="flex-1"
                       disabled={pets.some(
                         (p) =>
-                          p.is_main &&
+                          p.isMain &&
                           !canChangeMainPet(
                             (p as Pet).last_main_change ?? null
                           )
@@ -539,7 +567,7 @@ const { name, image } = getRandomPetName();
                       메인 설정
                     </Button>
                   )}
-                  {pet.is_main &&
+                  {pet.isMain &&
                     !canChangeMainPet((pet as Pet).last_main_change ?? null) && (
                       <div className="flex-1 text-center py-2">
                         <p className="font-korean text-xs text-muted-foreground">
@@ -691,6 +719,7 @@ const { name, image } = getRandomPetName();
           <PetRevealAnimation
             petName={revealPet.name}
             rarity={revealPet.rarity}
+            imageUrl={revealPet.avatar_url}
             onComplete={handleRevealComplete}
           />
         )}

@@ -513,6 +513,24 @@ function TodayTasksCard({
 function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
   const navigate = useNavigate();
 
+  const sortedPets = [...pets].sort((a, b) => {
+    if (a.is_main && !b.is_main) return -1;
+    if (!a.is_main && b.is_main) return 1;
+    return 0;
+});
+    // 2) 이미지 로딩 함수 (Pets.tsx에서 쓰는 방식과 통일)
+  const getPetImage = (avatar_url: string | null | undefined) => {
+    if (!avatar_url) return "/public/img/hat_bear.png";
+
+    // avatar_url이 "/public/img/hat_bear.png" 형태일 수도 있고
+    // DB에는 "hat_bear.png"만 들어있을 수도 있으므로 보정
+    if (avatar_url.startsWith("/public/img/")) return avatar_url;
+
+    // 파일명만 들어온 경우
+    return `/public/img/${avatar_url.split("/").pop()}`;
+  };
+
+
   return (
     <Card className="bg-card/50 border-2 border-border">
       <CardContent className="p-6">
@@ -535,15 +553,10 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
                 )}
               >
                 <img
-                  src={
-                    pet.avatar_url && pet.avatar_url.trim() !== ""
-                      ? pet.avatar_url
-                      : null
-                  }
+                  src={getPetImage(pet.avatar_url)}
                   alt={pet.name || "pet"}
                   className="w-16 h-16 object-contain"
                 />
-
                 {pet.is_main && (
                   <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground font-pixel text-[10px] rounded-sm">
                     MAIN
