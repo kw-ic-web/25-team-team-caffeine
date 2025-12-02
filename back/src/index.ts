@@ -13,7 +13,7 @@ const log = pino();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(",") ?? "http://localhost:8080",
+    origin: process.env.CORS_ORIGIN?.split(",") ?? "https://team07.kwweb.org",
     credentials: true,
   },
 });

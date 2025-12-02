@@ -38,7 +38,7 @@ const rarityGradients = {
   legendary: "from-warning to-warning/70",
 };
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const SOCKET_URL = import.meta.env.VITE_API_URL || "https://team07-api.kwweb.org";
 
 export default function ChatRoom() {
   const { roomId } = useParams();
