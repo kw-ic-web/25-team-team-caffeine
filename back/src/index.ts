@@ -12,22 +12,16 @@ const log = pino();
 app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   next();
-});
-
+  });
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-cors: {
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:8080",
-      "https://team07.kwweb.org",
-      "https://www.team07.kwweb.org"
-    ],
+  cors: {
+    origin: process.env.CORS_ORIGIN?.split(",") ?? "https://team07.kwweb.org",
     credentials: true,
-    methods: ["GET", "POST"]
   },
-  transports: ["websocket"],
 });
+
+
 
 async function upsertParticipant(roomId: string, userId: string, petId: string) {
   if (!roomId || !userId || !petId) return;
