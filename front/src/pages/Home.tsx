@@ -30,9 +30,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { goalsApi, petsApi, dailyTasksApi, communityApi, usersApi, type Goal } from "@/lib/api";
 import { localYMD } from "@/lib/date";
 
-import Pet1Img from "@/petimg/Pet1.png";
-import Pet2Img from "@/petimg/Pet2.png";
-import Pet3Img from "@/petimg/Pet3.png";
+const rarityGradients = {
+  common: "from-muted to-muted-foreground",
+  rare: "from-secondary to-secondary/70",
+  epic: "from-accent to-accent/70",
+  legendary: "from-warning to-warning/70",
+};
 
 type StatCardData = {
   label: string;
@@ -51,6 +54,7 @@ type DailyTask = {
 };
 
 type PetPreview = {
+  rarity: string;
   id: string;
   name?: string;
   avatar_url?: string;
@@ -172,6 +176,7 @@ export default function Home() {
           avatar_url: p.avatar_url,
           is_main: p.is_main,
           experience: p.experience,
+          rarity: p.rarity || "common",
         }))
       );
 
@@ -576,26 +581,23 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
                 key={pet.id}
                 onClick={() => navigate("/pets")}
                 className={cn(
-                  "relative aspect-square bg-gradient-primary rounded-lg flex flex-col items-center justify-center shadow-neon hover:shadow-neon-hover transition-all hover:scale-105 focus:outline-none",
+                  "relative min-h-[100px] bg-gradient-primary rounded-lg flex flex-col items-center justify-center shadow-neon hover:shadow-neon-hover transition-all hover:scale-105 focus:outline-none py-2", 
                   pet.is_main &&
                     "ring-2 ring-primary ring-offset-2 ring-offset-background"
                 )}
               >
-                <img
-                  src={
-                    pet.avatar_url && pet.avatar_url.trim() !== ""
-                      ? pet.avatar_url
-                      : Pet1Img
-                  }
-                  alt={pet.name || "pet"}
-                  className="w-16 h-16 object-contain"
-                />
+                <div
+                  className={`w-16 h-16 bg-gradient-to-br ${
+                    rarityGradients[pet.rarity || "common"]
+                  } rounded-lg flex items-center justify-center shadow-neon shrink-0`}
+                >
+                  <Heart className="w-8 h-8 text-primary-foreground" />
+                </div>
 
-                {pet.is_main && (
-                  <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground font-pixel text-[10px] rounded-sm">
-                    MAIN
-                  </span>
-                )}
+                <span className="mt-2 text-xs font-korean text-foreground truncate w-full px-1">
+                  {pet.name || "이름 없음"}
+                </span>
+
               </button>
             ))}
           </div>

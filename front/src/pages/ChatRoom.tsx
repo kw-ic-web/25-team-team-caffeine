@@ -259,8 +259,8 @@ export default function ChatRoom() {
   };
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden">
-      <div className="bg-card border-b-2 border-border p-4 flex-none">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-background">
+      <div className="bg-card border-b-2 border-border pt-20 pb-4 flex-none">
         <div className="container mx-auto max-w-6xl flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/community")}>
             <ArrowLeft className="w-5 h-5" />
