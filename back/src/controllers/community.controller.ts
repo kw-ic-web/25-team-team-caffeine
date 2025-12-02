@@ -88,7 +88,7 @@ export const getChallenges = async (req: Request, res: Response) => {
     const [rows] = await pool.query(`
       SELECT 
         id, 
-        name as title, 
+        name, 
         category, 
         deadline, 
         created_at 
@@ -106,25 +106,57 @@ export const createChallenge = async (req: AuthedRequest, res: Response) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { title, category, deadline } = req.body;
+    console.log("[Create Challenge] Raw Body:", req.body); // 디버깅 로그
+
+    // 1. 프론트에서 'name' 혹은 'title'로 보낸 값을 받음 (호환성 확보)
+    // 값이 없으면 빈 문자열("")로 처리하여 undefined 방지
+    let { name, title, category, deadline } = req.body;
+    
+    // 2. 최종적으로 사용할 방 제목 결정 (name이 없으면 title 사용)
+    const finalName = name || title;
+
+    // 3. 유효성 검사 (제목이 없으면 400 에러 리턴하고 함수 종료)
+    if (!finalName || !finalName.trim()) {
+      console.warn("[Create Challenge] Missing room name");
+      return res.status(400).json({ message: "방 제목(name)은 필수입니다." });
+    }
+
     const id = generateUUID();
     const challengeId = generateUUID(); 
 
-    await pool.query(
-      `INSERT INTO chat_rooms (id, name, category, deadline, challenge_id, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-      [id, title, category, deadline || null, challengeId]
-    );
+    const conn = await pool.getConnection();
 
-    await pool.query(
-      `INSERT INTO chat_participants (id, room_id, user_id, joined_at)
-       VALUES (?, ?, ?, NOW())`,
-      [generateUUID(), id, userId]
-    );
+    try {
+      await conn.beginTransaction();
 
-    res.status(201).json({ id });
-  } catch (err) {
-    console.error(err);
+      // 4. 채팅방 생성 (finalName 사용)
+      await conn.query(
+        `INSERT INTO chat_rooms (id, name, category, deadline, challenge_id, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+        [id, finalName, category || null, deadline || null, challengeId]
+      );
+
+      // 5. 참여자 등록 (방장)
+      await conn.query(
+        `INSERT INTO chat_participants (id, room_id, user_id, joined_at)
+         VALUES (?, ?, ?, NOW())`,
+        [generateUUID(), id, userId]
+      );
+
+      await conn.commit();
+      console.log(`[Create Challenge] Success! Room ID: ${id}`);
+      res.status(201).json({ id });
+
+    } catch (err) {
+      await conn.rollback();
+      console.error("[Create Challenge] Transaction Error:", err);
+      throw err;
+    } finally {
+      conn.release();
+    }
+
+  } catch (err: any) {
+    console.error("[Community] Create Error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };

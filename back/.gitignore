@@ -1,2 +1,4 @@
-/back/.env
-/back/node_modules
+.env
+node_modules/
+uploads/*
+!uploads/.gitkeep

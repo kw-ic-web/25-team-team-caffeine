@@ -59,3 +59,31 @@ export const listUsers = async (_req: AuthedRequest, res: Response) => {
     return res.status(500).json({ message: "서버 에러" });
   }
 };
+
+export const updateCurrentUser = async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = req.userId;
+    const { display_name } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ message: "인증 필요" });
+    }
+
+    if (!display_name || typeof display_name !== 'string' || !display_name.trim()) {
+      return res.status(400).json({ message: "유효한 닉네임을 입력해주세요." });
+    }
+
+    await pool.execute(
+      "UPDATE users SET display_name = ? WHERE id = ?",
+      [display_name, userId]
+    );
+    return res.json({
+      id: userId,
+      displayName: display_name,
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "서버 에러" });
+  }
+};

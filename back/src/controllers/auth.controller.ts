@@ -6,9 +6,9 @@ import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 import type { JwtPayload } from "../middleware/auth.js";
 
-// =======================
-// 이메일 회원가입
-// =======================
+const JWT_SECRET = process.env.JWT_SECRET || "team_caffeine_jwt_secret_key";
+
+
 export const registerUser = async (req: Request, res: Response) => {
   try {
     const { email, password, displayName } = req.body;
@@ -17,7 +17,6 @@ export const registerUser = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "email과 password는 필수입니다." });
     }
 
-    // 이메일 중복 확인
     const [existingRows] = await pool.execute(
       "SELECT id FROM users WHERE email = ?",
       [email]
@@ -33,13 +32,12 @@ export const registerUser = async (req: Request, res: Response) => {
     try {
       await conn.beginTransaction();
 
-      // users 생성
+      // 1. users 생성
       await conn.execute(
         "INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)",
         [email, passwordHash, displayName ?? null]
       );
 
-      // 새로 생성된 유저 조회 (email 기준)
       const [userRows] = await conn.execute(
         "SELECT id, email, display_name FROM users WHERE email = ?",
         [email]
@@ -47,17 +45,21 @@ export const registerUser = async (req: Request, res: Response) => {
       const user = (userRows as any[])[0];
       const userId = user.id as string;
 
-      // profiles 생성 (user_id FK)
       await conn.execute(
         "INSERT INTO profiles (user_id, display_name) VALUES (?, ?)",
         [userId, displayName ?? null]
+      );
+
+      await conn.execute(
+        "INSERT INTO user_powder (user_id, amount) VALUES (?, ?)",
+        [userId, 1000]
       );
 
       await conn.commit();
 
       const token = jwt.sign(
         { userId } as JwtPayload,
-        process.env.JWT_SECRET as string,
+        JWT_SECRET,
         { expiresIn: "7d" }
       );
 
@@ -84,9 +86,6 @@ export const registerUser = async (req: Request, res: Response) => {
   }
 };
 
-// =======================
-// 이메일 로그인
-// =======================
 export const loginUser = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -116,9 +115,10 @@ export const loginUser = async (req: Request, res: Response) => {
         .json({ message: "이메일 또는 비밀번호가 올바르지 않습니다." });
     }
 
+    // [수정] 상수 JWT_SECRET 사용
     const token = jwt.sign(
       { userId: user.id } as JwtPayload,
-      process.env.JWT_SECRET as string,
+      JWT_SECRET,
       { expiresIn: "7d" }
     );
 
@@ -136,9 +136,7 @@ export const loginUser = async (req: Request, res: Response) => {
   }
 };
 
-// =======================
-// Google 로그인 (OAuth2로 받은 프로필 기반)
-// =======================
+
 export const handleGoogleCallback = async (req: Request, res: Response) => {
   try {
     const { email, displayName, googleId } = req.body as {
@@ -155,19 +153,11 @@ export const handleGoogleCallback = async (req: Request, res: Response) => {
         .json({ message: "Google 계정 정보가 올바르지 않습니다." });
     }
 
-    if (!process.env.JWT_SECRET) {
-      console.error("[Google Login] JWT_SECRET not set");
-      return res
-        .status(500)
-        .json({ message: "JWT_SECRET 환경변수가 설정되어 있지 않습니다." });
-    }
-
     const conn = await pool.getConnection();
 
     try {
       await conn.beginTransaction();
 
-      // 1) 이미 가입된 유저인지 확인
       const [rows] = await conn.execute(
         "SELECT id, email, display_name FROM users WHERE email = ?",
         [email]
@@ -176,11 +166,8 @@ export const handleGoogleCallback = async (req: Request, res: Response) => {
 
       if ((rows as any[]).length > 0) {
         user = (rows as any[])[0];
-        console.log("[Google Login] Existing user:", user.id, user.email);
       } else {
-        console.log("[Google Login] New user, insert:", email);
 
-        // 2) 없으면 새로 생성 (랜덤 비밀번호)
         const randomPasswordHash = await bcrypt.hash(
           `google-${googleId}-${Date.now()}`,
           10
@@ -197,27 +184,33 @@ export const handleGoogleCallback = async (req: Request, res: Response) => {
         );
         user = (userRows as any[])[0];
 
-        // profiles 테이블도 쓰는 구조면 같이 생성
         try {
           await conn.execute(
             "INSERT INTO profiles (user_id, display_name) VALUES (?, ?)",
             [user.id, displayName ?? null]
           );
         } catch (e) {
-          // profiles 테이블이 없을 수도 있으니, 여기서만 잡고 로그만 남김
           console.warn(
             "[Google Login] profiles 테이블 insert 실패 (무시 가능):",
             e
           );
         }
+
+        try {
+          await conn.execute(
+            "INSERT INTO user_powder (user_id, amount) VALUES (?, ?)",
+            [user.id, 1000]
+          );
+        } catch (e) {
+          console.warn("[Google Login] 가루 지급 실패:", e);
+        }
       }
 
       await conn.commit();
 
-      // 3) JWT 발급
       const token = jwt.sign(
         { userId: user.id } as JwtPayload,
-        process.env.JWT_SECRET as string,
+        JWT_SECRET,
         { expiresIn: "7d" }
       );
 
@@ -240,7 +233,6 @@ export const handleGoogleCallback = async (req: Request, res: Response) => {
     }
   } catch (err) {
     console.error("[Google Login] 서버 에러:", err);
-    // 어떤 에러인지 프론트에서 바로 보이도록 메시지도 내려줌
     if (err instanceof Error) {
       return res.status(500).json({ message: err.message });
     }
