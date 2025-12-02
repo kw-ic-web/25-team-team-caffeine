@@ -96,8 +96,6 @@ export async function getTodayDailyTasks(req: AuthedRequest, res: Response) {
     const startOfDay = `${ymd} 00:00:00`;
     const endOfDay = `${ymd} 23:59:59`;
     const dayOfWeek = new Date(ymd).getDay();
-
-    console.log(`[DailyTask] 조회 - User: ${userId}, Date: ${ymd}`);
     const [goalRows] = await pool.query(
       `SELECT id, title, schedule_type, schedule_days, due_date 
        FROM goals 
