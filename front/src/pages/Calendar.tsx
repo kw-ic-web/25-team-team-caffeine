@@ -66,8 +66,6 @@ export default function Calendar() {
 
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
-
-    console.log("[GCAL] items", Array.isArray(data.items) ? data.items.length : 0);
     if (!res.ok) throw new Error(data.error?.message || "Google Calendar API 호출 실패");
 
     setGEvents(data.items || []);
@@ -130,7 +128,6 @@ export default function Calendar() {
         }
       );
       const data = await res.json();
-      console.log("[GCAL] calendarList", data);
       toast({
         title: "콘솔에서 캘린더 목록 확인!",
         description: `${data.items?.length || 0}개의 캘린더가 있습니다.`,

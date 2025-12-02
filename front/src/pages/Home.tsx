@@ -11,11 +11,23 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Pencil,
 } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { goalsApi, petsApi, dailyTasksApi, communityApi, type Goal } from "@/lib/api";
+import { goalsApi, petsApi, dailyTasksApi, communityApi, usersApi, type Goal } from "@/lib/api";
 import { localYMD } from "@/lib/date";
 
 import Pet1Img from "@/petimg/Pet1.png";
@@ -62,6 +74,7 @@ const INITIAL_STATS: StatCardData[] = [
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const [loadingDashboard, setLoadingDashboard] = useState<boolean>(true);
+  const { toast } = useToast();
 
   const [userName, setUserName] = useState("모험가");
   const [stats, setStats] = useState<StatCardData[]>(INITIAL_STATS);
@@ -171,13 +184,38 @@ export default function Home() {
     }
   }
 
+  const handleUpdateName = async (newName: string) => {
+    if (!newName.trim() || newName === userName) return;
+
+    try {
+      await usersApi.updateProfile({ display_name: newName });
+      
+      setUserName(newName);
+      toast({
+        title: "닉네임 변경 완료",
+        description: `앞으로 ${newName}님이라고 부를게요!`,
+      });
+    } catch (error) {
+      console.error("Failed to update name:", error);
+      toast({
+        title: "변경 실패",
+        description: "닉네임을 변경하는 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (authLoading || loadingDashboard) return <DashboardSkeleton />;
   if (!user) return <GuestLanding stats={stats} />;
 
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-6xl">
-        <DashboardHeader userName={userName} streakDays={streakDays} />
+        <DashboardHeader 
+          userName={userName} 
+          streakDays={streakDays} 
+          onUpdateName={handleUpdateName} 
+        />
 
         <StatsRow stats={stats} />
 
@@ -281,15 +319,48 @@ function GuestLanding({ stats }: { stats: StatCardData[] }) {
 function DashboardHeader({
   userName,
   streakDays,
+  onUpdateName,
 }: {
   userName: string;
   streakDays: number;
+  onUpdateName: (newName: string) => Promise<void>;
 }) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [tempName, setTempName] = useState(userName);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isDialogOpen) {
+      setTempName(userName);
+    }
+  }, [isDialogOpen, userName]);
+
+  const handleSave = async () => {
+    if (!tempName.trim()) return;
+    setIsSaving(true);
+    await onUpdateName(tempName);
+    setIsSaving(false);
+    setIsDialogOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSave();
+    }
+  };
+
   return (
     <div className="text-center mb-12 animate-slide-up">
-      <h1 className="font-pixel text-2xl sm:text-3xl mb-4 text-foreground">
-        {userName}님, 환영합니다!
-      </h1>
+      <div className="inline-flex items-center justify-center gap-2 group mb-4">
+        <h1
+          onClick={() => setIsDialogOpen(true)}
+          className="font-pixel text-2xl sm:text-3xl text-foreground cursor-pointer hover:text-primary transition-colors flex items-center gap-2"
+        >
+          {userName}님, 환영합니다!
+          <Pencil className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
+        </h1>
+      </div>
+      
       <p className="font-korean text-muted-foreground">
         오늘도 목표를 향해 달려봐요!
         {streakDays > 0 && (
@@ -298,6 +369,39 @@ function DashboardHeader({
           </span>
         )}
       </p>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] font-korean">
+          <DialogHeader>
+            <DialogTitle className="font-pixel text-xl">닉네임 변경</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                새 닉네임
+              </Label>
+              <Input
+                id="name"
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="col-span-3"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">
+                취소
+              </Button>
+            </DialogClose>
+            <Button type="button" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "변경 중..." : "저장"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

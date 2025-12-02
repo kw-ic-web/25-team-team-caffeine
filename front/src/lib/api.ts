@@ -117,6 +117,19 @@ export const authApi = {
   },
 };
 
+export const usersApi = {
+  updateProfile(payload: { display_name?: string }) {
+    return request<User>(
+      "/api/users/me",
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+      true
+    );
+  },
+};
+
 export interface Goal {
   id: string;
   title: string;

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, ArrowLeft, Heart } from "lucide-react";
+import { Send, ArrowLeft, Heart, Hand } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { petsApi, communityApi } from "@/lib/api";
@@ -22,6 +22,7 @@ interface Message {
 
 interface MovingPet {
   id: string;
+  userId: string;
   name: string;
   level: number;
   rarity: "common" | "rare" | "epic" | "legendary";
@@ -50,40 +51,62 @@ export default function ChatRoom() {
   const [movingPets, setMovingPets] = useState<MovingPet[]>([]);
   const [newMessage, setNewMessage] = useState("");
   
+  // 내 메인 펫 정보를 저장할 state (ref 대신 state 사용 권장)
+  const [myMainPet, setMyMainPet] = useState<any>(null);
+
   const socketRef = useRef<Socket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // 1. 초기화: 펫 정보 로드 -> 채팅 내역 로드 -> 소켓 연결 순서 보장
   useEffect(() => {
     if (!user || !roomId) {
         if(!user) navigate("/auth");
         return;
     }
 
-    loadChatHistory();
-    loadMyPet();
+    const init = async () => {
+        try {
+            // [수정] 펫 목록을 가져옵니다.
+            const pets = await petsApi.list();
+            
+            // [핵심 수정 로직]
+            // 1순위: 메인 펫 (is_main === true)
+            // 2순위: 메인 펫이 없다면 첫 번째 펫 (pets[0])
+            const targetPet = pets.find((p) => p.is_main) || pets[0];
 
-    socketRef.current = io(SOCKET_URL, {
-        withCredentials: true,
-    });
+            setMyMainPet(targetPet || null); // 상태 저장
 
-    socketRef.current.emit("join_room", roomId);
-    socketRef.current.on("receive_message", (msg: Message) => {
-        setMessages((prev) => [...prev, msg]);
-    });
+            // 2. 채팅 내역 로드
+            const history = await communityApi.getChatMessages(roomId);
+            setMessages(history);
 
+            // 3. 소켓 연결 (찾아낸 펫 정보를 인자로 넘김)
+            connectSocket(targetPet);
+            
+        } catch (err) {
+            console.error("초기화 실패", err);
+        }
+    };
+
+    init();
+
+    // 펫 산책 모드 잠시 끄기
     const previousState = localStorage.getItem("walkingPetsEnabled");
     localStorage.setItem("walkingPetsEnabled", "false");
     window.dispatchEvent(new Event("walkingPetsToggle"));
 
     return () => {
       socketRef.current?.disconnect();
+      socketRef.current = null;
       
       localStorage.setItem("walkingPetsEnabled", previousState || "true");
       window.dispatchEvent(new Event("walkingPetsToggle"));
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, user]);
 
+  // 스크롤 자동 이동
   useEffect(() => {
     if (scrollRef.current) {
       setTimeout(() => {
@@ -97,18 +120,23 @@ export default function ChatRoom() {
     }
   }, [messages]);
 
+  // 펫 움직임 애니메이션
   useEffect(() => {
     if (movingPets.length === 0 || !chatContainerRef.current) return;
+    
     const interval = setInterval(() => {
       setMovingPets((prevPets) =>
         prevPets.map((pet) => {
           let newX = pet.x + pet.speedX;
           let newY = pet.y + pet.speedY;
+          
           const containerRect = chatContainerRef.current?.getBoundingClientRect();
           if (!containerRect) return pet;
-          const petSize = 32;
+          
+          const petSize = 48; 
           const maxX = containerRect.width - petSize;
           const maxY = containerRect.height - petSize;
+
           if (newX <= 0 || newX >= maxX) {
             pet = { ...pet, speedX: -pet.speedX };
             newX = newX <= 0 ? 0 : maxX;
@@ -124,44 +152,81 @@ export default function ChatRoom() {
     return () => clearInterval(interval);
   }, [movingPets.length]);
 
-  const loadChatHistory = async () => {
-    if (!roomId) return;
-    try {
-        const history = await communityApi.getChatMessages(roomId);
-        setMessages(history);
-    } catch (err) {
-        console.error("채팅 내역 로드 실패", err);
-        toast({ title: "채팅 내역을 불러오지 못했습니다.", variant: "destructive" });
-    }
-  };
+  const connectSocket = (petInfo: any) => {
+    if(socketRef.current) return;
 
-  const loadMyPet = async () => {
-    try {
-      const pets = await petsApi.list();
-      const mainPet = pets.find((p) => p.is_main);
+    socketRef.current = io(SOCKET_URL, {
+        withCredentials: true,
+        transports: ["websocket"],
+    });
 
-      if (chatContainerRef.current && mainPet) {
+    // [중요] 가져온 펫 정보를 사용해 입장 요청
+    const joinData = {
+        roomId,
+        user: { id: user?.id, displayName: user?.displayName },
+        pet: petInfo // null이어도 보냄 (백엔드에서 처리)
+    };
+
+    socketRef.current.emit("join_room", joinData);
+
+    socketRef.current.on("receive_message", (msg: Message) => {
+        setMessages((prev) => [...prev, msg]);
+    });
+
+    // 현재 방의 유저/펫 리스트 수신
+    socketRef.current.on("room_users", (users: any[]) => {
+        if (!chatContainerRef.current) return;
         const containerRect = chatContainerRef.current.getBoundingClientRect();
-        setMovingPets([{
-            id: mainPet.id,
-            name: mainPet.name,
-            level: mainPet.level,
-            rarity: mainPet.rarity as any,
-            x: Math.random() * (containerRect.width - 100) + 50,
-            y: Math.random() * (containerRect.height - 100) + 50,
-            speedX: (Math.random() - 0.5) * 3,
-            speedY: (Math.random() - 0.5) * 3,
-        }]);
-      } else {
-        setMovingPets([]);
-      }
-    } catch (err) {
-      console.error("펫 로드 실패", err);
-    }
+
+        const newPets: MovingPet[] = users
+            .filter(u => u.pet) 
+            .map(u => ({
+                id: u.pet.id,
+                userId: u.userId,
+                name: u.pet.name,
+                level: u.pet.level,
+                rarity: u.pet.rarity,
+                x: Math.random() * (containerRect.width - 100) + 50,
+                y: Math.random() * (containerRect.height - 100) + 50,
+                speedX: (Math.random() - 0.5) * 3,
+                speedY: (Math.random() - 0.5) * 3,
+            }));
+        
+        setMovingPets(newPets); 
+    });
+
+    socketRef.current.on("user_joined", (userData: any) => {
+        if (!userData.pet || !chatContainerRef.current) return;
+        const containerRect = chatContainerRef.current.getBoundingClientRect();
+
+        setMovingPets(prev => {
+            if(prev.find(p => p.id === userData.pet.id)) return prev;
+
+            const newPet: MovingPet = {
+                id: userData.pet.id,
+                userId: userData.user.id,
+                name: userData.pet.name,
+                level: userData.pet.level,
+                rarity: userData.pet.rarity,
+                x: Math.random() * (containerRect.width - 100) + 50,
+                y: Math.random() * (containerRect.height - 100) + 50,
+                speedX: (Math.random() - 0.5) * 3,
+                speedY: (Math.random() - 0.5) * 3,
+            };
+            return [...prev, newPet];
+        });
+        
+        toast({
+            description: `${userData.user.displayName}님이 입장하셨습니다.`
+        });
+    });
   };
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !user || !roomId) return;
+
+    // [수정] 상태값(myMainPet)을 직접 사용
+    const myPetId = myMainPet?.id;
 
     const messageData = {
         roomId,
@@ -169,7 +234,8 @@ export default function ChatRoom() {
         message: newMessage.trim(),
         profiles: {
             display_name: user.displayName ?? "모험가"
-        }
+        },
+        petId: myPetId
     };
 
     socketRef.current?.emit("send_message", messageData);
@@ -181,6 +247,16 @@ export default function ChatRoom() {
       e.preventDefault();
       sendMessage();
     }
+  };
+
+  const handlePetClick = (pet: MovingPet) => {
+      if (pet.userId === user?.id) return;
+
+      toast({
+          title: "펫 쓰다듬기! 👋",
+          description: `${pet.name}의 경험치가 올랐습니다!`,
+          className: "bg-primary text-primary-foreground border-none"
+      });
   };
 
   const formatTime = (timestamp: string) => {
@@ -202,27 +278,46 @@ export default function ChatRoom() {
           <div>
             <h1 className="font-pixel text-xl text-foreground">채팅방</h1>
             <p className="font-korean text-sm text-muted-foreground">
-              실시간 대화 중
+              {movingPets.length}마리의 펫이 산책 중입니다
             </p>
           </div>
         </div>
       </div>
+
       <div className="flex-1 relative overflow-hidden bg-background/50" ref={chatContainerRef}>
-        {movingPets.map((pet) => (
-          <div
-            key={pet.id}
-            className="absolute z-0 opacity-30 pointer-events-none"
-            style={{ left: `${pet.x}px`, top: `${pet.y}px`, transition: 'left 0.05s linear, top 0.05s linear' }}
-          >
-            <div className="relative">
-              <div className={`w-8 h-8 bg-gradient-to-br ${rarityGradients[pet.rarity]} rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}>
-                <Heart className="w-4 h-4 text-primary-foreground" />
+        {movingPets.map((pet) => {
+            const isMyPet = pet.userId === user?.id;
+            return (
+              <div
+                key={pet.id}
+                className={`absolute z-0 transition-all duration-75 ease-linear
+                    ${isMyPet ? "opacity-40 cursor-default" : "opacity-80 cursor-pointer hover:scale-110 z-20"}`}
+                style={{ left: `${pet.x}px`, top: `${pet.y}px` }}
+                onClick={() => handlePetClick(pet)}
+              >
+                <div className="relative group">
+                  <div className={`w-10 h-10 bg-gradient-to-br ${rarityGradients[pet.rarity]} rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}>
+                    <Heart className={`w-5 h-5 text-primary-foreground ${!isMyPet && "group-hover:animate-pulse"}`} />
+                  </div>
+                  
+                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap pointer-events-none">
+                    <span className="bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full font-korean">
+                        {pet.name} {isMyPet && "(나)"}
+                    </span>
+                  </div>
+
+                  {!isMyPet && (
+                      <div className="absolute -right-6 -top-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          <Hand className="w-6 h-6 text-foreground animate-bounce" />
+                      </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
-        <ScrollArea className="h-full p-4 z-10 relative" ref={scrollRef}>
-          <div className="container mx-auto max-w-6xl space-y-4 pb-4">
+            );
+        })}
+
+        <ScrollArea className="h-full p-4 z-10 relative pointer-events-none" ref={scrollRef}>
+          <div className="container mx-auto max-w-6xl space-y-4 pb-4 pointer-events-auto">
             {messages.map((msg) => {
               const isMyMessage = msg.user_id === user?.id;
               return (
