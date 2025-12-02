@@ -7,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 
 import { goalsApi, type Goal as BaseGoal } from "@/lib/api";
 
-// 백엔드 goals 테이블에는 없는 필드들이 있어서 기존 타입을 확장
 type Goal = BaseGoal & {
   schedule_type?: "none" | "daily" | "specific_days" | "final_day_only";
   schedule_days?: number[] | null;
@@ -26,7 +25,6 @@ export default function GoalsArchive() {
 
   useEffect(() => {
     loadArchive();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isExpired = (due: string | null) => !!due && due < todayISO;
@@ -34,10 +32,7 @@ export default function GoalsArchive() {
   const loadArchive = async () => {
     setLoading(true);
     try {
-      // ✅ 백엔드(MySQL)에서 현재 로그인한 유저의 모든 goals를 가져옴
       const data = await goalsApi.list();
-
-      // ✅ 완료됐거나 마감이 지난 목표만 아카이브 대상으로 필터링
       const archiveGoals: Goal[] = (data || []).filter(
         (g) => g.completed || isExpired(g.due_date)
       );
@@ -67,8 +62,6 @@ export default function GoalsArchive() {
             목표로 돌아가기
           </Button>
         </div>
-
-        {/* 상단 요약 카드 */}
         <div className="flex flex-wrap gap-4 mb-6">
           <Card className="flex-1 min-w-[220px] bg-card/50 border-2 border-success">
             <CardContent className="p-4 flex items-center gap-3">
@@ -117,7 +110,6 @@ export default function GoalsArchive() {
           </Card>
         ) : (
           <div className="space-y-10">
-            {/* 완료된 목표 섹션 */}
             <section>
               <h2 className="font-pixel text-xl mb-3 flex items-center gap-2">
                 <Check className="w-5 h-5 text-success" />
@@ -169,8 +161,6 @@ export default function GoalsArchive() {
                 </div>
               )}
             </section>
-
-            {/* 마감 지난 목표 섹션 */}
             <section>
               <h2 className="font-pixel text-xl mb-3 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-warning" />

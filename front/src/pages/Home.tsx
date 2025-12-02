@@ -1,6 +1,6 @@
 import { useState, useEffect, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -15,7 +15,8 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { goalsApi, petsApi, type Goal } from "@/lib/api";
+import { goalsApi, petsApi, dailyTasksApi, communityApi, type Goal } from "@/lib/api";
+import { localYMD } from "@/lib/date";
 
 import Pet1Img from "@/petimg/Pet1.png";
 import Pet2Img from "@/petimg/Pet2.png";
@@ -52,38 +53,6 @@ type RoomSummary = {
   memberCount: number;
 };
 
-function startOfTodayLocal(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
-
-function getRawDueField(g: any): any {
-  return (
-    g?.due_date ??
-    g?.due_at ??
-    g?.deadline ??
-    g?.end_date ??
-    g?.end_at ??
-    null
-  );
-}
-
-function parseDueAsLocalDate(raw: any): Date | null {
-  if (!raw) return null;
-  if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const [y, m, d] = raw.split("-").map(Number);
-    return new Date(y, m - 1, d);
-  }
-  const d = new Date(raw);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function isExpiredBeforeToday(g: any): boolean {
-  const due = parseDueAsLocalDate(getRawDueField(g));
-  if (!due) return false;
-  return due.getTime() < startOfTodayLocal().getTime();
-}
-
 const INITIAL_STATS: StatCardData[] = [
   { label: "달성한 목표", value: 0, icon: Target, color: "text-success" },
   { label: "나의 펫", value: 0, icon: Heart, color: "text-accent" },
@@ -95,12 +64,12 @@ export default function Home() {
   const [loadingDashboard, setLoadingDashboard] = useState<boolean>(true);
 
   const [userName, setUserName] = useState("모험가");
-
   const [stats, setStats] = useState<StatCardData[]>(INITIAL_STATS);
 
   const [todayTasks, setTodayTasks] = useState<DailyTask[]>([]);
   const [todayProgress, setTodayProgress] = useState<number>(0);
-  const [streakDays, setStreakDays] = useState<number>(0); // 아직 계산 로직은 없음
+  
+  const [streakDays, setStreakDays] = useState<number>(0); 
 
   const [petsTop3, setPetsTop3] = useState<PetPreview[]>([]);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
@@ -108,11 +77,9 @@ export default function Home() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // AuthContext 초기 로딩 중이면 아무것도 하지 않음
     if (authLoading) return;
 
     if (!user) {
-      // 비로그인 상태
       setUserName("모험가");
       setStats(INITIAL_STATS);
       setTodayTasks([]);
@@ -124,56 +91,26 @@ export default function Home() {
       return;
     }
 
-    // 로그인된 상태면 대시보드 데이터 로딩
     loadUserData(user.id, user.displayName ?? "모험가");
   }, [authLoading, user]);
 
   async function loadUserData(userId: string, displayName: string) {
     setLoadingDashboard(true);
     try {
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = localYMD();
 
-      // MySQL 백엔드에서 goals / pets 가져오기
-      const [goalsRes, petsRes] = await Promise.all([
+      const [goalsRes, petsRes, tasksRaw, myRooms] = await Promise.all([
         goalsApi.list(),
         petsApi.list(),
+        dailyTasksApi.listToday(todayStr),
+        communityApi.getMyChallenges(),
       ]);
-
-      const allGoals: Goal[] = goalsRes || [];
 
       setUserName(displayName || "모험가");
 
-      // 만료되지 않은 목표만 필터링
-      const notExpiredGoals = allGoals.filter(
-        (g) => !isExpiredBeforeToday(g)
-      );
-
-      const activeGoalsCount = notExpiredGoals.filter(
-        (g) => !g.completed
-      ).length;
-      const completedGoalsCount = allGoals.filter(
-        (g) => g.completed
-      ).length;
-
-      // 간단히: 오늘의 할 일 = 오늘까지 유효하고 아직 완료 안 된 목표들
-      const tasksWithGoals: DailyTask[] = notExpiredGoals
-        .filter((g) => !g.completed)
-        .map((g) => ({
-          id: g.id,
-          goal_id: g.id,
-          task_date: todayStr,
-          completed: g.completed,
-          failed: false,
-          goal: g,
-        }));
-
-      setTodayTasks(tasksWithGoals);
-
-      const totalToday = tasksWithGoals.length;
-      const completedToday = tasksWithGoals.filter((t) => t.completed).length;
-      const pct =
-        totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
-      setTodayProgress(pct);
+      const allGoals: Goal[] = goalsRes || [];
+      const completedGoalsCount = allGoals.filter((g) => g.completed).length;
+      const activeGoalsCount = allGoals.filter((g) => !g.completed).length;
 
       setStats([
         {
@@ -196,17 +133,25 @@ export default function Home() {
         },
       ]);
 
+      const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
+      setTodayTasks(tasks);
+
+      const totalToday = tasks.length;
+      const completedToday = tasks.filter((t) => t.completed).length;
+      const pct = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+      setTodayProgress(pct);
+
       const petList = petsRes || [];
       const mainPet = petList.find((p: any) => p.is_main);
       const othersSorted = petList
         .filter((p: any) => !p.is_main)
-        .sort(
-          (a: any, b: any) => (b.experience ?? 0) - (a.experience ?? 0)
-        );
+        .sort((a: any, b: any) => (b.experience ?? 0) - (a.experience ?? 0));
+      
       const previewOrder = [
         ...(mainPet ? [mainPet] : []),
         ...othersSorted.slice(0, 2),
       ];
+      
       setPetsTop3(
         previewOrder.map((p: any) => ({
           id: p.id,
@@ -217,28 +162,18 @@ export default function Home() {
         }))
       );
 
-      // 아직 도전방 기능은 백엔드가 없으니 비워둠
-      setRooms([]);
+      setRooms(myRooms || []);
+
     } catch (err) {
       console.error("Failed to load dashboard:", err);
-      setStats(INITIAL_STATS);
-      setTodayTasks([]);
-      setTodayProgress(0);
-      setStreakDays(0);
-      setPetsTop3([]);
-      setRooms([]);
     } finally {
       setLoadingDashboard(false);
     }
   }
 
-  // Auth 로딩 또는 대시보드 로딩 중이면 스켈레톤
   if (authLoading || loadingDashboard) return <DashboardSkeleton />;
-
-  // 로그인 안 된 상태
   if (!user) return <GuestLanding stats={stats} />;
 
-  // 로그인 + 로딩 완료
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="container mx-auto max-w-6xl">
@@ -257,6 +192,7 @@ export default function Home() {
             <span className="ml-2 font-korean">새로운 목표 달성하기</span>
           </Button>
         </div>
+        
         <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-6">
           <TodayTasksCard
             tasks={todayTasks}
@@ -265,6 +201,7 @@ export default function Home() {
           />
           <MyPetsPreview pets={petsTop3} />
         </div>
+        
         <div className="mt-8">
           <ActiveRooms rooms={rooms} />
         </div>
@@ -437,6 +374,13 @@ function TodayTasksCard({
   const statusText = (t: DailyTask) =>
     t.completed ? "완료" : t.failed ? "실패" : "진행 중";
 
+  const sortedTasks = [...tasks].sort((a, b) => {
+      const aDone = a.completed || a.failed;
+      const bDone = b.completed || b.failed;
+      if (aDone === bDone) return 0;
+      return aDone ? 1 : -1;
+  });
+
   return (
     <Card className="bg-card/50 border-2 border-border">
       <CardContent className="p-6">
@@ -463,14 +407,14 @@ function TodayTasksCard({
           )}
         </div>
         <div className="space-y-3">
-          {tasks.length === 0 ? (
-            <div className="text-sm text-muted-foreground font-korean">
+          {sortedTasks.length === 0 ? (
+            <div className="text-sm text-muted-foreground font-korean text-center py-4">
               오늘의 목표가 없어요.
               <br />
               새로운 목표를 만들어볼까요?
             </div>
           ) : (
-            tasks.map((t) => (
+            sortedTasks.slice(0, 5).map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -487,14 +431,21 @@ function TodayTasksCard({
                 <div className="flex items-center justify-center">
                   {statusIcon(t)}
                 </div>
-                <span className="font-korean text-sm text-foreground line-clamp-1">
-                  {t.goal?.title ?? "(제목 없음)"}{" "}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    — {statusText(t)}
-                  </span>
+                <span className="font-korean text-sm text-foreground line-clamp-1 flex-1">
+                  {t.goal?.title ?? "(제목 없음)"}
+                </span>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                   {statusText(t)}
                 </span>
               </button>
             ))
+          )}
+          {sortedTasks.length > 5 && (
+              <div className="text-center mt-2">
+                  <span className="text-xs text-muted-foreground cursor-pointer hover:underline" onClick={() => navigate("/goals")}>
+                      + 더 보기
+                  </span>
+              </div>
           )}
         </div>
       </CardContent>
@@ -511,8 +462,8 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
         <h3 className="font-pixel text-lg mb-4 text-foreground">나의 펫</h3>
 
         {pets.length === 0 ? (
-          <div className="text-sm text-muted-foreground font-korean">
-            아직 펫이 없어요. 목표를 달성하고 가루를 모아 펫을 뽑아보세요!
+          <div className="text-sm text-muted-foreground font-korean text-center py-8">
+            아직 펫이 없어요. <br/>목표를 달성하고 펫을 뽑아보세요!
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3">
@@ -533,7 +484,7 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
                       : Pet1Img
                   }
                   alt={pet.name || "pet"}
-                  className="w-20 h-21 object-contain"
+                  className="w-16 h-16 object-contain"
                 />
 
                 {pet.is_main && (
@@ -552,6 +503,19 @@ function MyPetsPreview({ pets }: { pets: PetPreview[] }) {
 
 function ActiveRooms({ rooms }: { rooms: RoomSummary[] }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleEnterRoom = (room: RoomSummary) => {
+    if (room.daysLeft < 0) {
+      toast({
+        title: "종료된 도전방",
+        description: "이미 마감된 도전방에는 입장할 수 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    navigate(`/chat/${room.id}`);
+  };
 
   return (
     <Card className="bg-card/50 border-2 border-border">
@@ -561,29 +525,40 @@ function ActiveRooms({ rooms }: { rooms: RoomSummary[] }) {
         </h3>
 
         {rooms.length === 0 ? (
-          <div className="text-sm text-muted-foreground font-korean">
-            아직 참여 중인 도전방이 없어요. 새 도전방을 만들어보세요!
+          <div className="text-sm text-muted-foreground font-korean text-center py-4">
+            아직 참여 중인 도전방이 없어요.
           </div>
         ) : (
           <div className="space-y-3">
             {rooms.map((room) => (
               <div
                 key={room.id}
-                className="flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border hover:border-primary transition-all cursor-pointer"
-                onClick={() => navigate(`/rooms/${room.id}`)}
+                className={cn(
+                  "flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border transition-all cursor-pointer",
+                  room.daysLeft < 0 
+                    ? "opacity-60 cursor-not-allowed" 
+                    : "hover:border-primary"
+                )}
+                onClick={() => handleEnterRoom(room)}
               >
                 <div>
                   <div className="font-korean text-sm text-foreground">
                     {room.title}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    D-{room.daysLeft} · {room.memberCount}명 참여 중
+                    {room.daysLeft < 0 
+                      ? <span className="text-destructive font-bold">종료됨</span> 
+                      : `D-${room.daysLeft}`} · {room.memberCount}명 참여 중
                   </div>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
                   className="font-korean text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEnterRoom(room);
+                  }}
                 >
                   입장
                 </Button>
@@ -618,41 +593,6 @@ function DashboardSkeleton() {
               <div className="h-4 w-24 bg-muted rounded mx-auto" />
             </div>
           ))}
-        </div>
-
-        <div className="text-center mb-16">
-          <div className="h-10 w-48 bg-muted rounded-lg mx-auto" />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              className="bg-card/50 border-2 border-border rounded-lg p-6"
-            >
-              <div className="h-5 w-24 bg-muted rounded mb-4" />
-              <div className="space-y-3">
-                {[0, 1, 2].map((j) => (
-                  <div
-                    key={j}
-                    className="h-10 bg-muted/60 rounded border border-border"
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 bg-card/50 border-2 border-border rounded-lg p-6">
-          <div className="h-5 w-32 bg-muted rounded mb-4" />
-          <div className="space-y-3">
-            {[0, 1].map((j) => (
-              <div
-                key={j}
-                className="h-12 bg-muted/60 rounded border border-border"
-              />
-            ))}
-          </div>
         </div>
       </div>
     </div>

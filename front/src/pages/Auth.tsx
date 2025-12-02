@@ -18,7 +18,7 @@ export default function Auth() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();              // ✅ 추가
+  const { toast } = useToast();
   const { login, register, loginWithGoogle } = useAuth();
 
   const handleAuth = async (e: React.FormEvent) => {
