@@ -2,6 +2,15 @@ import { Request, Response } from "express";
 import { pool } from "../db";
 import { v4 as uuidv4 } from "uuid";
 
+const getRarityMultiplier = (rarity: string): number => {
+  switch (rarity) {
+    case "legendary": return 2.5;
+    case "epic": return 2.0;
+    case "rare": return 1.5;
+    default: return 1.0;
+  }
+};
+
 function generateUUID() {
   if (typeof uuidv4 === 'function') return uuidv4();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -223,6 +232,28 @@ export async function completeDailyTask(req: AuthedRequest, res: Response) {
         const progressRate = Math.min(finalCompleted / totalDays, 1);
         
         rewardGiven = Math.floor(task.powder_reward * progressRate);
+
+        const [petRows]: any = await pool.query(
+          "SELECT level, stars, rarity FROM pets WHERE user_id = ? AND is_main = 1",
+          [userId]
+        );
+
+        if (petRows.length > 0) {
+          const mainPet = petRows[0];
+          const petLevel = mainPet.level || 1;
+          const petStars = mainPet.stars || 0;
+          const petRarity = mainPet.rarity || "common";
+
+          const baseBonus = (petLevel * 5) + (petStars * 20);
+          
+          const multiplier = getRarityMultiplier(petRarity);
+          
+          const petFinalBonus = Math.floor(baseBonus * multiplier);
+
+          console.log(`[Reward] Goal: ${rewardGiven}, Pet Bonus: ${petFinalBonus} (Lv.${petLevel}, Star.${petStars}, ${petRarity} x${multiplier})`);
+
+          rewardGiven += petFinalBonus;
+        }
 
         if (rewardGiven > 0) {
             await pool.query(

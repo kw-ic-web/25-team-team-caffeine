@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, ArrowLeft, Heart, Hand } from "lucide-react";
+import { Send, ArrowLeft, Heart, Hand, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { petsApi, communityApi } from "@/lib/api";
@@ -25,6 +25,7 @@ interface MovingPet {
   userId: string;
   name: string;
   level: number;
+  stars: number;
   rarity: "common" | "rare" | "epic" | "legendary";
   x: number;
   y: number;
@@ -177,6 +178,7 @@ export default function ChatRoom() {
                 userId: u.userId,
                 name: u.pet.name,
                 level: u.pet.level,
+                stars: u.pet.stars || 0,
                 rarity: u.pet.rarity,
                 x: Math.random() * (containerRect.width - 100) + 50,
                 y: Math.random() * (containerRect.height - 100) + 50,
@@ -199,6 +201,7 @@ export default function ChatRoom() {
                 userId: userData.user.id,
                 name: userData.pet.name,
                 level: userData.pet.level,
+                stars: userData.pet.stars || 0,
                 rarity: userData.pet.rarity,
                 x: Math.random() * (containerRect.width - 100) + 50,
                 y: Math.random() * (containerRect.height - 100) + 50,
@@ -286,16 +289,28 @@ export default function ChatRoom() {
                 onClick={() => handlePetClick(pet)}
               >
                 <div className="relative group">
-                  <div className={`w-10 h-10 bg-gradient-to-br ${rarityGradients[pet.rarity]} rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}>
+                  <div className={`w-10 h-10 bg-gradient-to-br ${rarityGradients[pet.rarity || "common"]} rounded-lg flex items-center justify-center shadow-neon animate-bounce-walk`}>
                     <Heart className={`w-5 h-5 text-primary-foreground ${!isMyPet && "group-hover:animate-pulse"}`} />
                   </div>
                   
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap pointer-events-none">
-                    <span className="bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full font-korean">
-                        {pet.name} {isMyPet && "(나)"}
+                  {pet.stars > 0 && (
+                    <div className="absolute -bottom-1 -left-2 flex gap-[1px] z-10 filter drop-shadow-sm">
+                      {Array.from({ length: pet.stars }).map((_, i) => (
+                        <Star 
+                          key={i} 
+                          className="w-3 h-3 text-warning fill-warning animate-pulse-glow" 
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 whitespace-nowrap pointer-events-none z-20">
+                    <span className="bg-black/60 text-white text-[10px] px-2 py-1 rounded-full font-korean flex items-center gap-1 backdrop-blur-sm border border-white/10">
+                      <span className="text-yellow-400 font-bold">Lv.{pet.level}</span>
+                      <span>{pet.name}</span>
+                      {isMyPet && <span className="text-xs text-primary-foreground">(나)</span>}
                     </span>
                   </div>
-
                   {!isMyPet && (
                       <div className="absolute -right-6 -top-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           <Hand className="w-6 h-6 text-foreground animate-bounce" />

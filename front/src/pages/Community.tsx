@@ -545,13 +545,17 @@ export default function Community() {
               </CardContent>
             </Card>
 
-            {posts.map((post, i) => (
-              <Card
-                key={post.id}
-                className="bg-card border-2 border-border shadow-card animate-slide-up"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                <CardContent className="p-6">
+            {posts.map((post, i) => {
+              // ✨ 추가: 내 게시글인지 확인
+              const isMyPost = user && post.user_id === user.id; 
+
+              return (
+                <Card
+                  key={post.id}
+                  className="bg-card border-2 border-border shadow-card animate-slide-up"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  <CardContent className="p-6">
                   <div className="flex items-start gap-4 mb-4">
                     <Avatar className="w-12 h-12 border-2 border-primary">
                       <AvatarFallback className="bg-gradient-primary text-primary-foreground font-pixel text-sm">
@@ -579,13 +583,16 @@ export default function Community() {
                       className="w-full rounded-sm border-2 border-border mb-4"
                     />
                   )}
-                  <div className="flex items-center gap-4 mb-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => toggleLike(post.id)}
-                    >
+                    <div className="flex items-center gap-4 mb-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isMyPost} 
+                        className={`gap-2 ${isMyPost ? "opacity-50 cursor-not-allowed" : ""}`} 
+                        onClick={() => {
+                          if (!isMyPost) toggleLike(post.id);
+                        }}
+                      >
                       <Heart
                         className={`w-4 h-4 ${
                           userLikes.has(post.id)
@@ -653,10 +660,10 @@ export default function Community() {
                   )}
                 </CardContent>
               </Card>
-            ))}
+            );
+          })}
           </TabsContent>
 
-          {/* 랭킹 탭 */}
           <TabsContent value="ranking" className="space-y-6">
             <Card className="bg-gradient-secondary border-2 border-secondary shadow-neon mb-2 animate-slide-up">
               <CardHeader>
@@ -756,7 +763,7 @@ export default function Community() {
                               )}
                             </div>
                             <div className="font-korean text-xs text-muted-foreground">
-                              {entry.total_exp} EXP
+                              {entry.total_exp} 가루
                             </div>
                           </div>
                         </div>
@@ -764,7 +771,7 @@ export default function Community() {
 
                       <div className="flex items-center gap-4">
                         {entry.daily_exp && entry.daily_exp.length > 0 && (
-                          <div className="w-24 h-12">
+                          <div className="w-24 flex flex-col justify-center">
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart
                                 data={entry.daily_exp.map((exp, i) => ({

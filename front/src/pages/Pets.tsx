@@ -163,11 +163,9 @@ export default function Pets() {
         });
       }
 
-      // 2) 새 메인 펫 설정
       await petsApi.update(id, {
         is_main: true as any,
-        // 백엔드에서 last_main_change 컬럼이 있다면 자동 반영
-        last_main_change: new Date().toISOString() as any,
+        last_main_change: new Date().toISOString().slice(0, 19).replace("T", " ") as any,
       });
 
       toast({
@@ -389,7 +387,7 @@ export default function Pets() {
               )}
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              {pet.is_main && (
+              {!!pet.is_main &&(
                 <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-primary rounded-sm">
                   <span className="font-pixel text-xs text-primary-foreground">
                     MAIN
@@ -482,7 +480,7 @@ export default function Pets() {
                       메인 설정
                     </Button>
                   )}
-                  {pet.is_main &&
+                  {!!pet.is_main &&
                     !canChangeMainPet((pet as Pet).last_main_change ?? null) && (
                       <div className="flex-1 text-center py-2">
                         <p className="font-korean text-xs text-muted-foreground">
