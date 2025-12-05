@@ -12,14 +12,20 @@ function generateUUID() {
   });
 }
 
+// 1. 레벨업 필요 경험치 계산 함수
+const getRequiredExp = (level: number) => {
+  return level * 20; 
+};
+
 export const getFeed = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
 
+    // ⚠️ 수정: BINARY 제거 (일반 조인)
     const [posts] = await pool.query(`
       SELECT p.*, u.display_name 
       FROM posts p
-      JOIN users u ON BINARY p.user_id = BINARY u.id
+      JOIN users u ON p.user_id = u.id
       ORDER BY p.created_at DESC
     `);
     const [likes] = await pool.query(`SELECT post_id, COUNT(*) as count FROM post_likes GROUP BY post_id`);
@@ -70,10 +76,11 @@ export const createPost = async (req: AuthedRequest, res: Response) => {
       [id, userId, content, imageUrl]
     );
 
+    // ⚠️ 수정: BINARY 제거
     const [rows] = await pool.query(`
         SELECT p.*, u.display_name 
         FROM posts p 
-        JOIN users u ON BINARY p.user_id = BINARY u.id 
+        JOIN users u ON p.user_id = u.id 
         WHERE p.id = ?`, 
         [id]
     );
@@ -83,6 +90,7 @@ export const createPost = async (req: AuthedRequest, res: Response) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 export const getChallenges = async (req: Request, res: Response) => {
   try {
     const [rows] = await pool.query(`
@@ -101,23 +109,16 @@ export const getChallenges = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 export const createChallenge = async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    console.log("[Create Challenge] Raw Body:", req.body); // 디버깅 로그
-
-    // 1. 프론트에서 'name' 혹은 'title'로 보낸 값을 받음 (호환성 확보)
-    // 값이 없으면 빈 문자열("")로 처리하여 undefined 방지
     let { name, title, category, deadline } = req.body;
-    
-    // 2. 최종적으로 사용할 방 제목 결정 (name이 없으면 title 사용)
     const finalName = name || title;
 
-    // 3. 유효성 검사 (제목이 없으면 400 에러 리턴하고 함수 종료)
     if (!finalName || !finalName.trim()) {
-      console.warn("[Create Challenge] Missing room name");
       return res.status(400).json({ message: "방 제목(name)은 필수입니다." });
     }
 
@@ -129,14 +130,12 @@ export const createChallenge = async (req: AuthedRequest, res: Response) => {
     try {
       await conn.beginTransaction();
 
-      // 4. 채팅방 생성 (finalName 사용)
       await conn.query(
         `INSERT INTO chat_rooms (id, name, category, deadline, challenge_id, created_at, updated_at) 
          VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
         [id, finalName, category || null, deadline || null, challengeId]
       );
 
-      // 5. 참여자 등록 (방장)
       await conn.query(
         `INSERT INTO chat_participants (id, room_id, user_id, joined_at)
          VALUES (?, ?, ?, NOW())`,
@@ -144,7 +143,6 @@ export const createChallenge = async (req: AuthedRequest, res: Response) => {
       );
 
       await conn.commit();
-      console.log(`[Create Challenge] Success! Room ID: ${id}`);
       res.status(201).json({ id });
 
     } catch (err) {
@@ -164,10 +162,11 @@ export const createChallenge = async (req: AuthedRequest, res: Response) => {
 export const getComments = async (req: Request, res: Response) => {
   try {
     const { postId } = req.params;
+    // ⚠️ 수정: BINARY 제거
     const [rows] = await pool.query(
       `SELECT c.*, u.display_name 
        FROM post_comments c
-       JOIN users u ON BINARY c.user_id = BINARY u.id
+       JOIN users u ON c.user_id = u.id
        WHERE c.post_id = ?
        ORDER BY c.created_at ASC`,
       [postId]
@@ -194,10 +193,11 @@ export const addComment = async (req: AuthedRequest, res: Response) => {
       [id, postId, userId, content]
     );
 
+    // ⚠️ 수정: BINARY 제거
     const [rows] = await pool.query(
       `SELECT c.*, u.display_name 
        FROM post_comments c
-       JOIN users u ON BINARY c.user_id = BINARY u.id
+       JOIN users u ON c.user_id = u.id
        WHERE c.id = ?`,
       [id]
     );
@@ -215,14 +215,26 @@ export const toggleLike = async (req: AuthedRequest, res: Response) => {
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { postId } = req.params;
+    const [posts]: any = await pool.query("SELECT user_id FROM posts WHERE id = ?", [postId]);
+    
+    if (posts.length === 0) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+    
+    const postOwnerId = posts[0].user_id;
 
-    const [existing] = await pool.query(
+    if (userId === postOwnerId) {
+      return res.status(400).json({ message: "자신의 글에는 좋아요를 누를 수 없습니다." });
+    }
+
+    const [existing]: any = await pool.query(
       `SELECT * FROM post_likes WHERE post_id = ? AND user_id = ?`,
       [postId, userId]
     );
 
     let liked = false;
-    if ((existing as any[]).length > 0) {
+
+    if (existing.length > 0) {
       await pool.query(`DELETE FROM post_likes WHERE post_id = ? AND user_id = ?`, [postId, userId]);
       liked = false;
     } else {
@@ -231,6 +243,37 @@ export const toggleLike = async (req: AuthedRequest, res: Response) => {
           [generateUUID(), postId, userId]
       );
       liked = true;
+
+      // --- 펫 경험치 보너스 로직 ---
+      const [ownerPets]: any = await pool.query(
+        "SELECT id, is_main, experience, level FROM pets WHERE user_id = ?",
+        [postOwnerId]
+      );
+
+      if (ownerPets.length > 0) {
+        let targetPet = ownerPets.find((p: any) => p.is_main);
+
+        if (!targetPet) {
+          const randomIndex = Math.floor(Math.random() * ownerPets.length);
+          targetPet = ownerPets[randomIndex];
+        }
+
+        let newExp = targetPet.experience + 10;
+        let newLevel = targetPet.level;
+        
+        let required = getRequiredExp(newLevel);
+        
+        while (newExp >= required) {
+          newExp -= required;
+          newLevel += 1;
+          required = getRequiredExp(newLevel);
+        }
+
+        await pool.query(
+          "UPDATE pets SET experience = ?, level = ? WHERE id = ?", 
+          [newExp, newLevel, targetPet.id]
+        );
+      }
     }
 
     const [countResult] = await pool.query(
@@ -253,20 +296,40 @@ export const getRankings = async (req: Request, res: Response) => {
         u.id as user_id,
         u.display_name,
         COALESCE(up.amount, 0) as total_exp,
-        RANK() OVER (ORDER BY COALESCE(up.amount, 0) DESC) as ranking
+        
+        (
+          SELECT COALESCE(SUM(g.powder_reward), 0)
+          FROM daily_tasks dt
+          JOIN goals g ON dt.goal_id = g.id
+          WHERE dt.user_id = u.id 
+          AND dt.completed = 1
+          AND dt.task_date >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+        ) as weekly_gained,
+
+        (
+          SELECT COALESCE(SUM(g.powder_reward), 0)
+          FROM daily_tasks dt
+          JOIN goals g ON dt.goal_id = g.id
+          WHERE dt.user_id = u.id 
+          AND dt.completed = 1
+          AND DATE(dt.task_date) = CURDATE()
+        ) as today_gained
+
       FROM users u
-      LEFT JOIN user_powder up ON BINARY u.id = BINARY up.user_id
-      ORDER BY total_exp DESC
+      LEFT JOIN user_powder up ON u.id = up.user_id
+      -- ✅ [수정됨] 주간 획득량(weekly_gained) 기준으로 내림차순 정렬
+      ORDER BY weekly_gained DESC, total_exp DESC
       LIMIT 10
     `);
 
-    const result = (rows as any[]).map(row => ({
+    // ✅ [수정됨] 정렬된 순서대로 랭킹(rank) 부여
+    const result = (rows as any[]).map((row, index) => ({
         user_id: row.user_id,
         display_name: row.display_name || "모험가",
         total_exp: Number(row.total_exp),
-        rank: Number(row.ranking),
-        reward_garu: 0, 
-        daily_exp: [0, 0, 0, 0, 0, 0, 0] 
+        rank: index + 1, // 1등부터 순서대로
+        reward_garu: Number(row.weekly_gained), 
+        daily_exp: [0, 0, 0, 0, 0, 0, Number(row.today_gained)] 
     }));
 
     res.json(result);
@@ -314,11 +377,13 @@ export const getMyChallenges = async (req: AuthedRequest, res: Response) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 export const getChatMessages = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
     console.log(`[Chat] Loading messages for Room ID: ${roomId}`);
     
+    // ⚠️ 수정: BINARY 제거
     const [rows] = await pool.query(`
       SELECT 
         m.id, 
@@ -327,7 +392,7 @@ export const getChatMessages = async (req: Request, res: Response) => {
         m.created_at,
         u.display_name
       FROM chat_messages m
-      JOIN users u ON BINARY m.user_id = BINARY u.id  -- ✅ [핵심 수정] BINARY 추가
+      JOIN users u ON m.user_id = u.id 
       WHERE m.room_id = ?
       ORDER BY m.created_at ASC
     `, [roomId]);

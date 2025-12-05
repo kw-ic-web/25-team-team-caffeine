@@ -57,7 +57,8 @@ async function broadcastRoomPets(roomId: string) {
          p.id as petId,
          p.name as petName,
          p.level,
-         p.rarity
+         p.rarity,
+         p.stars
        FROM chat_participants cp
        JOIN pets p ON cp.pet_id = p.id
        WHERE cp.room_id = ?`,
@@ -73,6 +74,7 @@ async function broadcastRoomPets(roomId: string) {
         name: p.petName,
         level: p.level,
         rarity: p.rarity,
+        stars: p.stars ?? 0,
       },
     }));
 

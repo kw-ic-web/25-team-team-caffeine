@@ -52,9 +52,9 @@ export default function Pets() {
   const [loading, setLoading] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
   const [revealPet, setRevealPet] = useState<{
-  name: string;
-  rarity: PetRarity;
-} | null>(null);
+    name: string;
+    rarity: PetRarity;
+  } | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -114,19 +114,29 @@ export default function Pets() {
     }
   };
 
+  // ✅ [수정됨] 시차 문제 해결 로직 적용
   const canChangeMainPet = (lastChange: string | null): boolean => {
     if (!lastChange) return true;
     const now = new Date();
-    const lastChangeDate = new Date(lastChange);
+    
+    // DB 문자열 뒤에 'Z'를 붙여서 UTC 시간임을 명시 (한국 시간 오해 방지)
+    const dateStr = lastChange.endsWith("Z") ? lastChange : lastChange + "Z";
+    const lastChangeDate = new Date(dateStr);
+
     const hoursSinceChange =
       (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
     return hoursSinceChange >= 24;
   };
 
+  // ✅ [수정됨] 시차 문제 해결 로직 적용
   const getTimeUntilChange = (lastChange: string | null): string => {
     if (!lastChange) return "";
     const now = new Date();
-    const lastChangeDate = new Date(lastChange);
+    
+    // 여기도 'Z' 추가
+    const dateStr = lastChange.endsWith("Z") ? lastChange : lastChange + "Z";
+    const lastChangeDate = new Date(dateStr);
+
     const hoursSinceChange =
       (now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60);
     const hoursRemaining = Math.ceil(24 - hoursSinceChange);
@@ -164,10 +174,10 @@ export default function Pets() {
       }
 
       // 2) 새 메인 펫 설정
+      // 날짜 형식을 "YYYY-MM-DD HH:mm:ss"로 맞추기 위해 slice 사용
       await petsApi.update(id, {
         is_main: true as any,
-        // 백엔드에서 last_main_change 컬럼이 있다면 자동 반영
-        last_main_change: new Date().toISOString() as any,
+        last_main_change: new Date().toISOString().slice(0, 19).replace("T", " ") as any,
       });
 
       toast({
@@ -189,13 +199,13 @@ export default function Pets() {
   };
 
   const getRarityByProbability = (): PetRarity => {
-  const rand = Math.random() * 100;
+    const rand = Math.random() * 100;
 
-  if (rand < 1) return "legendary";
-  if (rand < 10) return "epic";
-  if (rand < 32) return "rare";
-  return "common";
-};
+    if (rand < 1) return "legendary";
+    if (rand < 10) return "epic";
+    if (rand < 32) return "rare";
+    return "common";
+  };
 
   const createPet = async () => {
     const cost = 500;
@@ -296,8 +306,6 @@ export default function Pets() {
       // 2) 성공/실패 판정
       const success = attemptUpgrade(selectedPet.stars);
 
-      // TODO: 나중에 upgrade_logs를 위한 백엔드 API를 만들면 여기서 호출
-
       // 3) 결과 반영
       if (success) {
         await petsApi.update(selectedPet.id, {
@@ -389,7 +397,7 @@ export default function Pets() {
               )}
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              {pet.is_main && (
+              {!!pet.is_main && (
                 <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-primary rounded-sm">
                   <span className="font-pixel text-xs text-primary-foreground">
                     MAIN
@@ -482,7 +490,7 @@ export default function Pets() {
                       메인 설정
                     </Button>
                   )}
-                  {pet.is_main &&
+                  {!!pet.is_main &&
                     !canChangeMainPet((pet as Pet).last_main_change ?? null) && (
                       <div className="flex-1 text-center py-2">
                         <p className="font-korean text-xs text-muted-foreground">

@@ -56,7 +56,10 @@ export const createPet = async (req: AuthedRequest, res: Response) => {
   }
 };
 
-// 펫 정보 업데이트 (레벨, 경험치, 메인 설정 등)
+const getRequiredExp = (level: number) => {
+  return level * 20; 
+};
+
 export const updatePet = async (req: AuthedRequest, res: Response) => {
   try {
     if (!req.userId) {
@@ -64,34 +67,71 @@ export const updatePet = async (req: AuthedRequest, res: Response) => {
     }
 
     const petId = req.params.id;
-    const { name, level, rarity, experience, stars, isMain } = req.body;
+    // 프론트에서 보낸 데이터
+    const { name, rarity, stars, is_main, last_main_change } = req.body;
+    // body에 값이 없으면 undefined일 수 있음
+    const bodyExp = req.body.experience;
+    const bodyLevel = req.body.level;
 
+    // 1. DB에서 현재 상태 가져오기
+    const [rows] = await pool.execute(
+      "SELECT * FROM pets WHERE id = ? AND user_id = ?",
+      [petId, req.userId]
+    );
+    const pets = rows as any[];
+    if (pets.length === 0) {
+      return res.status(404).json({ message: "펫을 찾을 수 없습니다." });
+    }
+    const currentPet = pets[0];
+
+    // 2. 메인 펫 해제 로직
+    if (is_main === true || is_main === 1 || is_main === "true") {
+      await pool.execute("UPDATE pets SET is_main = 0 WHERE user_id = ?", [
+        req.userId,
+      ]);
+    }
+
+    // 3. 레벨업 로직 (무조건 실행) 🚀
+    // 요청에 경험치가 있으면 그걸 쓰고, 없으면 DB에 있는 현재 경험치를 씁니다.
+    let calcExp = bodyExp !== undefined ? bodyExp : currentPet.experience;
+    let calcLevel = bodyLevel !== undefined ? bodyLevel : currentPet.level;
+
+    // 레벨업 계산 (while 반복문)
+    let required = getRequiredExp(calcLevel);
+    while (calcExp >= required) {
+      calcExp -= required;
+      calcLevel += 1;
+      required = getRequiredExp(calcLevel);
+    }
+
+    // 4. SQL 필드 만들기
     const fields: string[] = [];
     const values: any[] = [];
 
-    if (name !== undefined) {
-      fields.push("name = ?");
-      values.push(name);
+    if (name !== undefined) { fields.push("name = ?"); values.push(name); }
+    if (rarity !== undefined) { fields.push("rarity = ?"); values.push(rarity); }
+    if (stars !== undefined) { fields.push("stars = ?"); values.push(stars); }
+    
+    // [중요] 계산된 레벨/경험치가 기존 DB 값과 다르거나, 요청으로 들어왔다면 업데이트 대상에 포함
+    if (calcLevel !== currentPet.level || bodyLevel !== undefined) {
+        fields.push("level = ?"); values.push(calcLevel);
     }
-    if (level !== undefined) {
-      fields.push("level = ?");
-      values.push(level);
+    if (calcExp !== currentPet.experience || bodyExp !== undefined) {
+        fields.push("experience = ?"); values.push(calcExp);
     }
-    if (rarity !== undefined) {
-      fields.push("rarity = ?");
-      values.push(rarity);
-    }
-    if (experience !== undefined) {
-      fields.push("experience = ?");
-      values.push(experience);
-    }
-    if (stars !== undefined) {
-      fields.push("stars = ?");
-      values.push(stars);
-    }
-    if (isMain !== undefined) {
+
+    if (is_main !== undefined) {
       fields.push("is_main = ?");
-      values.push(isMain ? 1 : 0);
+      values.push(is_main ? 1 : 0);
+    }
+    
+    if (last_main_change !== undefined) {
+      fields.push("last_main_change = ?");
+      const formattedDate = new Date(last_main_change)
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+      values.push(formattedDate);
     }
 
     if (fields.length === 0) {
@@ -100,25 +140,23 @@ export const updatePet = async (req: AuthedRequest, res: Response) => {
 
     values.push(petId, req.userId);
 
-    const [result] = await pool.execute(
-      `UPDATE pets
-       SET ${fields.join(", ")}
-       WHERE id = ? AND user_id = ?`,
+    // 5. 업데이트 실행
+    await pool.execute(
+      `UPDATE pets SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`,
       values
     );
 
-    const r = result as any;
-    if (r.affectedRows === 0) {
-      return res.status(404).json({ message: "펫을 찾을 수 없습니다." });
-    }
+    return res.json({ 
+      message: "updated", 
+      level: calcLevel, 
+      experience: calcExp 
+    });
 
-    return res.json({ message: "updated" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "서버 에러" });
   }
 };
-
 // 펫 삭제
 export const deletePet = async (req: AuthedRequest, res: Response) => {
   try {
